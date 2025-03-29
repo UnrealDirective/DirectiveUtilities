@@ -6,7 +6,11 @@
 #include "Engine/StaticMeshActor.h"
 #include "Materials/MaterialExpressionTextureObject.h"
 #include "EditorViewportClient.h"
+#include "Components/BoxComponent.h"
+#include "Components/CapsuleComponent.h"
+#include "Components/SphereComponent.h"
 #include "Materials/MaterialExpressionTextureSample.h"
+#include "Subsystems/SubsystemCollection.h"
 
 void UUDCoreEditorActorSubsystem::FocusActorsInViewport(const TArray<AActor*> Actors, const bool bInstant)
 {
@@ -1140,7 +1144,7 @@ bool UUDCoreEditorActorSubsystem::IsActorWithinBoxBounds(AActor* Actor, UBoxComp
 	const FVector ActorLocation = Actor->GetActorLocation();
 	const FVector BoxComponentLocation = BoxComponent->GetComponentLocation();
 
-	// Need to multiple the box component extents by the actor scale to get the correct bounds
+	// Need to multiply the box component extents by the actor scale to get the correct bounds
 	const FVector BoxComponentExtent = BoxComponent->GetScaledBoxExtent() * Actor->GetActorScale();
 
 	// Now check if the actor is within the box component bounds
@@ -1199,7 +1203,8 @@ void UUDCoreEditorActorSubsystem::GetActorsByMaterial(
 	const EUDSelectionMethod SelectionMethod,
 	const EUDInclusivity Inclusivity)
 {
-	GetActorsByMaterialSoftReference(FoundActors, Material, MaterialSource, SelectionMethod, Inclusivity);
+	const TSoftObjectPtr<UMaterialInterface> MaterialSoftReference{FSoftObjectPath(Material)};
+	GetActorsByMaterialSoftReference(FoundActors, MaterialSoftReference, MaterialSource, SelectionMethod, Inclusivity);
 }
 
 
@@ -1751,7 +1756,7 @@ void UUDCoreEditorActorSubsystem::GetActorsByStaticMeshName(
 			}
 			if (!StaticMeshComponent->GetStaticMesh())
 			{
-				// In the off chance that that the static mesh is null, and the name is empty, we'll add the actor.
+				// In the off chance that the static mesh is null, and the name is empty, we'll add the actor.
 				// Otherwise, we'll skip it.
 				if (StaticMeshName.IsEmpty()) { FoundActors.AddUnique(Actor); }
 				continue;
@@ -1951,3 +1956,90 @@ void UUDCoreEditorActorSubsystem::PushOverrideMaterialsToSource(UStaticMeshCompo
 	}
 	UE_LOG(LogUDCoreEditor, Display, TEXT("Materials were pushed to source for %s."), *StaticMeshComponent->GetName());
 }
+
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION == 5
+// These functions were added for Unreal Engine 5.5 to solve a code regression.
+// For more information, see https://github.com/UnrealDirective/UDCore/issues/6
+// TODO: Remove these once UE 5.5 is no longer supported.
+
+void UDCOREEDITOR_API UUDCoreEditorActorSubsystem::Initialize(FSubsystemCollectionBase& Collection)
+{
+	FEditorDelegates::OnNewActorsDropped.AddUObject(this, &UUDCoreEditorActorSubsystem::BroadcastEditNewActorsDropped);
+	FEditorDelegates::OnNewActorsPlaced.AddUObject(this, &UUDCoreEditorActorSubsystem::BroadcastEditNewActorsPlaced);
+
+	FEditorDelegates::OnEditCutActorsBegin.AddUObject(this, &UUDCoreEditorActorSubsystem::BroadcastEditCutActorsBegin);
+	FEditorDelegates::OnEditCutActorsEnd.AddUObject(this, &UUDCoreEditorActorSubsystem::BroadcastEditCutActorsEnd);
+
+	FEditorDelegates::OnEditCopyActorsBegin.AddUObject(this, &UUDCoreEditorActorSubsystem::BroadcastEditCopyActorsBegin);
+	FEditorDelegates::OnEditCopyActorsEnd.AddUObject(this, &UUDCoreEditorActorSubsystem::BroadcastEditCopyActorsEnd);
+
+	FEditorDelegates::OnEditPasteActorsBegin.AddUObject(this, &UUDCoreEditorActorSubsystem::BroadcastEditPasteActorsBegin);
+	FEditorDelegates::OnEditPasteActorsEnd.AddUObject(this, &UUDCoreEditorActorSubsystem::BroadcastEditPasteActorsEnd);
+
+	FEditorDelegates::OnDuplicateActorsBegin.AddUObject(this, &UUDCoreEditorActorSubsystem::BroadcastDuplicateActorsBegin);
+	FEditorDelegates::OnDuplicateActorsEnd.AddUObject(this, &UUDCoreEditorActorSubsystem::BroadcastDuplicateActorsEnd);
+
+	FEditorDelegates::OnDeleteActorsBegin.AddUObject(this, &UUDCoreEditorActorSubsystem::BroadcastDeleteActorsBegin);
+	FEditorDelegates::OnDeleteActorsEnd.AddUObject(this, &UUDCoreEditorActorSubsystem::BroadcastDeleteActorsEnd);
+}
+
+void UUDCoreEditorActorSubsystem::BroadcastEditNewActorsDropped(const TArray<UObject*>& DroppedObjects, const TArray<AActor*>& DroppedActors) const
+{
+	OnNewActorsDropped.Broadcast(DroppedObjects, DroppedActors);
+}
+
+void UUDCoreEditorActorSubsystem::BroadcastEditNewActorsPlaced(UObject* ObjToUse, const TArray<AActor*>& PlacedActors) const
+{
+	OnNewActorsPlaced.Broadcast(ObjToUse, PlacedActors);
+}
+
+void UUDCoreEditorActorSubsystem::BroadcastEditCutActorsBegin() const
+{
+	OnEditCutActorsBegin.Broadcast();
+}
+
+void UUDCoreEditorActorSubsystem::BroadcastEditCutActorsEnd() const
+{
+	OnEditCutActorsEnd.Broadcast();
+}
+
+void UUDCoreEditorActorSubsystem::BroadcastEditCopyActorsBegin() const
+{
+	OnEditCopyActorsBegin.Broadcast();
+}
+
+void UUDCoreEditorActorSubsystem::BroadcastEditCopyActorsEnd() const
+{
+	OnEditCopyActorsEnd.Broadcast();
+}
+
+void UUDCoreEditorActorSubsystem::BroadcastEditPasteActorsBegin() const
+{
+	OnEditPasteActorsBegin.Broadcast();
+}
+
+void UUDCoreEditorActorSubsystem::BroadcastEditPasteActorsEnd() const
+{
+	OnEditPasteActorsEnd.Broadcast();
+}
+
+void UUDCoreEditorActorSubsystem::BroadcastDuplicateActorsBegin() const
+{
+	OnDuplicateActorsBegin.Broadcast();
+}
+
+void UUDCoreEditorActorSubsystem::BroadcastDuplicateActorsEnd() const
+{
+	OnDuplicateActorsEnd.Broadcast();
+}
+
+void UUDCoreEditorActorSubsystem::BroadcastDeleteActorsBegin() const
+{
+	OnDeleteActorsBegin.Broadcast();
+}
+void UUDCoreEditorActorSubsystem::BroadcastDeleteActorsEnd() const
+{
+	OnDeleteActorsEnd.Broadcast();
+}
+
+#endif

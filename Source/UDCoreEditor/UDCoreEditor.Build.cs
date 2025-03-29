@@ -10,20 +10,20 @@ public class UDCoreEditor : ModuleRules
 			new string[]
 			{
 				"Core",
-				"UnrealEd",
+				"CoreUObject",
+				"Engine",
+				"EditorSubsystem",
+				"UDCore",
 			}
 		);
 
 		PrivateDependencyModuleNames.AddRange(
 			new string[]
 			{
-				"CoreUObject",
-				"Engine",
 				"Slate",
 				"SlateCore",
-				"UDCore",
-				"EditorFramework",
 				"EditorScriptingUtilities",
+				"UnrealEd",
 			}
 		);
 	}

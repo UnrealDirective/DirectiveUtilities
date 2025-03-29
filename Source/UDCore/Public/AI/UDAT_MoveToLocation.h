@@ -39,7 +39,7 @@ public:
 		BlueprintCallable,
 		meta=(
 			BlueprintInternalUseOnly = "true",
-			Category = "Unreal Directive|AI|Navigation",
+			Category = "UDCore|AI|Navigation",
 			WorldContext = "WorldContextObject",
 			DisplayName = "Async Move To Location",
 			AdvancedDisplay=6
