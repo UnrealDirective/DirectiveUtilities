@@ -1,0 +1,60 @@
+{
+	"FileVersion": 3,
+	"Version": 3,
+	"VersionName": "2.0",
+	"FriendlyName": "Directive Utilities",
+	"Description": "An open-source Unreal Engine plugin that provides runtime and editor utility nodes for developers.",
+	"Category": "Unreal Directive",
+	"CreatedBy": "Unreal Directive",
+	"CreatedByURL": "https://unrealdirective.com",
+	"DocsURL": "https://udcore.unrealdirective.com/",
+	"MarketplaceURL": "https://unrealdirective.com",
+	"SupportURL": "https://github.com/UnrealDirective/DirectiveUtilities/issues",
+	"CanContainContent": false,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "DirectiveUtilitiesRuntime",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"PlatformAllowList": [
+				"Win64",
+				"Mac",
+				"Linux"
+			]
+		},
+		{
+			"Name": "DirectiveUtilitiesEditor",
+			"Type": "Editor",
+			"LoadingPhase": "Default",
+			"TargetAllowList": [
+				"Editor"
+			]
+		},
+		{
+			"Name": "DirectiveUtilitiesTests",
+			"Type": "DeveloperTool",
+			"LoadingPhase": "PostEngineInit",
+			"PlatformAllowList": [
+				"Win64",
+				"Mac",
+				"Linux"
+			],
+			"TargetAllowList": [
+				"Editor"
+			]
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "EditorScriptingUtilities",
+			"Enabled": true
+		},
+		{
+			"Name": "EnhancedInput",
+			"Enabled": true
+		}
+	]
+}

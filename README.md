@@ -1,245 +1,125 @@
-# UDCore
+# Directive Utilities
 
-**UDCore** (or **Unreal Directive Core**), is an open-source [Unreal Engine](https://www.unrealengine.com/) plugin that's designed from the ground-up to provide quality-of-life functionalities to enhance the development experience.
+[![Build plugin](https://github.com/UnrealDirective/DirectiveUtilities/actions/workflows/build-plugin.yml/badge.svg?branch=main)](https://github.com/UnrealDirective/DirectiveUtilities/actions/workflows/build-plugin.yml)
+[![Unreal Engine](https://img.shields.io/badge/Unreal%20Engine-5.6%20to%205.8-0E1128?logo=unrealengine)](Documentation/Compatibility.md)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-This plugin was started by [Dylan "Tezenari" Amos](https://dylanamos.com) as part of the [Unreal Directive](https://unrealdirective.com) initiative to empower Unreal Engine developers with knowledge and tools to better allow them to build amazing things.
+Directive Utilities is an open-source Unreal Engine plugin that fills gaps in the Blueprint library and editor scripting APIs. It ships as readable C++ source, and its Blueprint nodes can also be called from C++.
 
-UDCore's philosophy revolves around the following --
-- **Adherence to Best Practices** - Every feature in UDCore is designed to be efficient, easy to read, and aligned with best development practices, making it simple for developers to learn from, replicate, or extend.
-- **Enhancing Workflow Efficiency** - UDCore is built to streamline development by exposing hidden Unreal Engine editor features, introducing new functionality, and simplifying existing tools to boost productivity.
-- **Universal Compatibility** - UDCore's core functionality is primarily developed in C++, ensuring it is accessible and usable across C++, Blueprints and Python, making it versatile for any project.
+Version 2.0 replaces UDCore 1.x. Existing Blueprint assets migrate through bundled Core Redirects. C++ projects need to update module names, include paths, classes, types, and API macros as described in the [2.0 migration guide](Documentation/Migration-2.0.md).
 
-This plugin will be updated sporadically with new functionality.
+## What is included
 
-[![Read The Documentation](https://img.shields.io/badge/Read%20The%20Documentation-blue)](https://udcore.unrealdirective.com/)
+| Area | Utilities |
+|------|-----------|
+| Arrays and maps | Wildcard container nodes for indexing, lookup, removal, merging, and duplicate handling. |
+| Strings, text, and regex | Validation, filtering, case conversion, fuzzy matching, hashing, encoding, capture groups, and replacement. |
+| Math | Easing, weighted random selection, rounding, angle helpers, Perlin noise, formatting, and array statistics. |
+| Gameplay Tags | Hierarchy navigation, ancestry checks, sibling queries, and registry search. |
+| Save games | Slot enumeration, timestamps, byte serialization, validation, deletion, and renaming. |
+| Enhanced Input | Subsystem access and mapping-context operations. |
+| Async work | Delay, asset and class loading, traces, and navigation movement. |
+| Editor actors | Actor filters, selection tools, viewport controls, material operations, and mesh queries. |
+| Editor assets | Asset Registry queries and asset management helpers for editor scripts. |
 
-## Requirements
-- **Software**: Unreal Engine 5.3 ~ 5.4
-- **Platform**: Windows
+Blueprint nodes appear under `Directive Utilities` in the Blueprint palette. The [node reference](Documentation/README.md#node-reference) lists every exposed function with its category, parameters, outputs, and edge cases.
 
-## Features
+## Compatibility
 
-- **Async Tasks** - New functionality to perform common tasks asynchronously.
-- **String/Text Utilities** - Functions to handle and manipulate strings and text.
-- **Editor Actor Subsystem** - A plethora of utilities and filters to that improves upon the Editor Actor Subsystem.
-- **Enhanced Input** - New functions to simplify and improve Enhanced Input system.
+| | Support |
+|---|---|
+| Unreal Engine | 5.6, 5.7, and 5.8 |
+| Platforms | Win64, Mac, and Linux |
+| Distribution | Source plugin |
+| License | MIT |
+
+Module boundaries keep editor dependencies out of packaged games.
+
+| Module | Use |
+|--------|-----|
+| `DirectiveUtilitiesRuntime` | Runtime libraries and async actions. This is the only module that ships in packaged games. |
+| `DirectiveUtilitiesEditor` | Asset and actor tools for editor targets. |
+| `DirectiveUtilitiesTests` | Editor automation tests. |
+
+See [Compatibility](Documentation/Compatibility.md) for the support policy and build-target details.
 
 ## Installation
 
-Instruction on how to install the UDCore plugin. I recommend checking out the [Quick Start](https://udcore.unrealdirective.com/docs/getting-started/quickstart) page over on the [documentation](https://udcore.unrealdirective.com/) website.
+The full [installation guide](Documentation/Installation.md) covers upgrades and troubleshooting.
 
-### Option 1: Plugin Downloader
+### GitHub release
 
-UDCore can be installed directly by using the [Plugin Downloader](https://www.unrealengine.com/marketplace/en-US/product/plugin-downloader) plugin on the marketplace.
+Prebuilt plugin packages are attached to [GitHub releases](https://github.com/UnrealDirective/DirectiveUtilities/releases). Choose the plugin version you need, then download the archive for your Unreal Engine version and extract it to `YourProject/Plugins/DirectiveUtilities`. A matching release package does not need to be compiled locally.
 
-1. **Install [Plugin Downloader](https://www.unrealengine.com/marketplace/en-US/product/plugin-downloader) from the Unreal Engine Marketplace**
+If the release does not include your engine version, install the source with Git.
 
-2. **Enable the `Plugin Downloader` plugin**
+### Git
 
-   1. Open your Unreal Engine project.
-   2. Go to `Edit` -> `Plugins`.
-   3. Search for `Plugin Downloader` and enable it.
-   4. Restart the Unreal Engine editor.
+```sh
+git clone https://github.com/UnrealDirective/DirectiveUtilities.git DirectiveUtilities
+```
 
-3. **Download `UDCore`**
+Copy the cloned folder to `YourProject/Plugins/DirectiveUtilities`. The plugin descriptor should be at:
 
-   1. Go to `Edit` -> `Plugins` 
-   2. Click on `Download` in the upper left of the `Plugins` window
-   3. Enter the following info in the `Download Plugin` window
-      1. **User:** UnrealDirective
-      2. **Repo:** UDCore
-      3. **Branch:** main
+```text
+YourProject/Plugins/DirectiveUtilities/DirectiveUtilities.uplugin
+```
 
-   4. Click on `Download` in the bottom right of the `Download Plugin` window
-   5. Wait for download to complete
-   6. Restart the Unreal Engine editor when prompted
+Open the project, enable `Directive Utilities` from the Plugins window, and restart the editor. Unreal builds the plugin with C++ projects. Blueprint-only projects may prompt you to compile it on first launch.
 
-4. **Enable the `UDCore` plugin**
+### Updating from UDCore
 
-   1. Open your Unreal Engine project.
-   2. Go to `Edit` -> `Plugins`.
-   3. Search for `Plugin Downloader` and enable it.
-   4. Restart the Unreal Engine editor.
-
-### Option 2: Git Clone
-
-1. **Clone the repository:**
-   
-   ```sh
-   git clone https://github.com/UnrealDirective/UDCore.git
-   ```
-   
-2. **Copy the plugin to your Unreal Engine project:**
-   - Navigate to your Unreal Engine project's `Plugins` directory.
-   - Copy the `UDCore` folder into the `Plugins` directory.
-
-3. **Enable the plugin:**
-   - Open your Unreal Engine project.
-   - Go to `Edit` > `Plugins`.
-   - Search for `UDCore` and enable it.
-   - Restart the Unreal Engine editor.
+Remove `Plugins/UDCore` before installing `Plugins/DirectiveUtilities`. Blueprint references migrate when the project loads. C++ consumers must update their dependencies and renamed symbols before compiling. Follow the [2.0 migration guide](Documentation/Migration-2.0.md) for the complete rename table.
 
 ## Usage
 
-Here are examples on how you can go about using some of the functions in UDCore. For more detailed information, please check out the [documentation](https://udcore.unrealdirective.com/docs/features/overview).
+### Blueprint
 
-### AI Utilities
+Open a Blueprint graph and search for `Directive Utilities`. Subcategories separate containers, math, strings, input, save games, async actions, and editor tools. Editor-only nodes are unavailable in runtime Blueprints and packaged games.
 
-- **Async Move to Location:**
+### C++
 
-  
-  
-  ```cpp
-  .cpp
-  #include "AI/UDAT_MoveToLocation.h"
-  #include "GameFramework/Controller.h"
-  #include "GameFramework/Actor.h"
-  
-  void AExampleCharacter::MovePlayerToLocation()
-  {
-      UWorld* World = GetWorld();
-      AController* Controller = GetController();
-      const FVector Destination(100.0f, 200.0f, 300.0f);
-      constexpr float AcceptanceRadius = 100.0f;
-      constexpr bool bDebugLineTrace = false;
-  
-      UUDAT_MoveToLocation* MoveToLocationTask = UUDAT_MoveToLocation::MoveToLocation(
-          World,
-          Controller,
-          Destination,
-          AcceptanceRadius,
-          bDebugLineTrace);
-  
-      if (MoveToLocationTask)
-      {
-          MoveToLocationTask->Completed.AddDynamic(this, &ThisClass::OnMoveToLocationCompleted);
-      }
-  }
-  
-  void AExampleCharacter::OnMoveToLocationCompleted(bool bSuccess)
-  {
-      // Called when UUDAT_MoveToLocation has completed with either a success or fail.
-      // Add your logic here.
-  }
-  ```
+Add the runtime module to your target's `.Build.cs` file:
 
-### String Manipulation
+```csharp
+PublicDependencyModuleNames.Add("DirectiveUtilitiesRuntime");
+```
 
-- **Contains Letters:**
+Include the library you need and call its static functions:
 
-  ```cpp
-  FString StringToCheck = "Example123"
-  bool bHasLetters = UUDCoreFunctionLibrary::ContainsLetters(StringToCheck);
-  ```
+```cpp
+#include "Libraries/DirectiveUtilStringFunctionLibrary.h"
 
-- **Contains Numbers:**
+const FString SaveName = TEXT("Campaign_01");
+const bool bIsValidSaveName = UDirectiveUtilStringFunctionLibrary::IsValidFileName(SaveName);
+```
 
-  ```cpp
-  FString StringToCheck = "Example123"
-  bool bHasNumbers = UUDCoreFunctionLibrary::ContainsNumbers(StringToCheck);
-  ```
+Editor modules and editor-only targets can depend on `DirectiveUtilitiesEditor`. Runtime targets should never reference that module.
 
-- **Filter Characters:**
+## Documentation
 
-  ```c++
-  FString StringToCheck = "Example 123 !@#"
-  bool bFilterOutLetters = false;
-  bool bFilterOutNumbers = false;
-  bool bFilterOutSpecialCharacters = true;
-  bool bFilterOutSpaces = true;
-  
-  // "Example 123 !@#" would become "Example123"
-  FString FilteredString = UUDCoreFunctionLibrary::FilterCharacters(
-     StringToCheck,
-     bFilterOutLetters,
-     bFilterOutNumbers,
-     bFilterOutSpecialCharacters,
-     bFilterOutSpaces);
-  ```
+- [Installation](Documentation/Installation.md) covers setup, verification, updates, and common failures.
+- [Node reference](Documentation/README.md#node-reference) links to every Blueprint library and async action.
+- [Compatibility](Documentation/Compatibility.md) defines supported engines, platforms, module boundaries, and packaged-game behavior.
+- [Migration 2.0](Documentation/Migration-2.0.md) maps UDCore names to their Directive Utilities replacements.
+- [Changelog](CHANGELOG.md) tracks releases and behavior changes.
 
-### Text Utilities
-
-- **Is Not Empty:**
-
-  ```cpp
-  FText TextToCheck = "Example123"
-  bool bIsNotEmpty = UUDCoreFunctionLibrary::IsNotEmpty(TextToCheck);
-  ```
-
-### Editor Actor Subsystem
-
-- **Focus Actors In Viewport:**
-
-  ```cpp
-  TArray<AActor*> ActorsToFocus;
-  bool bFocusInstantly = true;
-  
-  // Populate ActorsToFocus with actors
-  UUDCoreEditorActorSubsystem::FocusActorsInViewport(ActorsToFocus, bFocusInstantly);
-  ```
-
-- **Get All Level Classes:**
-
-  ```cpp
-  TArray<UClass*> LevelClasses = UUDCoreEditorActorSubsystem::GetAllLevelClasses();
-  ```
-
-- **Filter Static Mesh Actors:**
-
-  ```cpp
-  TArray<AStaticMeshActor*> StaticMeshActors;
-  TArray<AActor*> ActorsToFilter;
-  
-  // Populate ActorsToFilter with actors
-  UUDCoreEditorActorSubsystem::FilterStaticMeshActors(StaticMeshActors, ActorsToFilter);
-  ```
-
-- **Filter Actors By Name:**
-
-  ```cpp
-  TArray<AActor*> FilteredActors;
-  TArray<AActor*> ActorsToFilter;
-  FString ActorNameToFind = "ExampleName";
-  
-  // Populate ActorsToFilter with actors
-  UUDCoreEditorActorSubsystem::FilterActorsByName(ActorsToFilter, FilteredActors, ActorNameToFind, EUDInclusivity::Include);
-  ```
-
-- **Filter Actors By Class:**
-
-  ```cpp
-  TArray<AActor*> FilteredActors;
-  TArray<AActor*> ActorsToFilter;
-  
-  // Populate ActorsToFilter with actors
-  UUDCoreEditorActorSubsystem::FilterActorsByClass(ActorsToFilter, FilteredActors, AStaticMeshActor::StaticClass(), EUDInclusivity::Include);
-  ```
-
-
+The hosted documentation is available at [udcore.unrealdirective.com](https://udcore.unrealdirective.com/).
 
 ## Contributing
 
-We welcome contributions to enhance the functionality of UDCore. Please follow these steps to contribute:
+When behavior changes, update its implementation and tests together. Revise the matching page under `Documentation/Nodes/` in the same pull request, then build the plugin for each affected engine version.
 
-1. Fork the repository.
-2. Create a new branch (`git checkout -b feature/YourFeature`).
-3. Commit your changes (`git commit -am 'Add new feature'`).
-4. Push to the branch (`git push origin feature/YourFeature`).
-5. Create a new Pull Request.
-
-## License
-
-UDCore is licensed under the MIT License. See the [LICENSE](LICENSE) file for more details.
+Open pull requests against `dev` and describe any Blueprint compatibility impact.
 
 ## Support
 
-For support, please visit our [GitHub Issues](https://github.com/UnrealDirective/UDCore/issues) page.
+Use [GitHub Issues](https://github.com/UnrealDirective/DirectiveUtilities/issues) for bug reports and feature requests.
 
-## Authors
+## License
 
-- Unreal Directive - [Website](https://unrealdirective.com)
-- Dylan "Tezenari" Amos - [Website](https://dylanamos.com)
+Directive Utilities is available under the [MIT License](LICENSE).
 
-## Acknowledgments
+## Maintainers
 
-- Special thanks to the Unreal Engine community for their continuous support and contributions.
+Directive Utilities is maintained by [Unreal Directive](https://unrealdirective.com/) and [Dylan "Tezenari" Amos](https://dylanamos.com/).
