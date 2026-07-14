@@ -1,6 +1,5 @@
 # Directive Utilities
 
-[![Build plugin](https://github.com/UnrealDirective/DirectiveUtilities/actions/workflows/build-plugin.yml/badge.svg?branch=main)](https://github.com/UnrealDirective/DirectiveUtilities/actions/workflows/build-plugin.yml)
 [![Unreal Engine](https://img.shields.io/badge/Unreal%20Engine-5.6%20to%205.8-0E1128?logo=unrealengine)](Documentation/Compatibility.md)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
