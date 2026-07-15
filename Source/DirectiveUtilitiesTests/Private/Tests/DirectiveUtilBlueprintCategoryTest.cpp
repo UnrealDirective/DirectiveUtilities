@@ -8,8 +8,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDirectiveUtilBlueprintCategoryTest, "Directive
 bool FDirectiveUtilBlueprintCategoryTest::RunTest(const FString& Parameters)
 {
 	const FString ExpectedCategoryRoot = TEXT("Directive Utilities");
+	const FString RuntimeScriptPackage = TEXT("/Script/DirectiveUtilitiesRuntime");
 	const TSet<FString> PluginScriptPackages = {
-		TEXT("/Script/DirectiveUtilitiesRuntime"),
+		RuntimeScriptPackage,
 		TEXT("/Script/DirectiveUtilitiesEditor")
 	};
 
@@ -32,6 +33,15 @@ bool FDirectiveUtilBlueprintCategoryTest::RunTest(const FString& Parameters)
 			}
 
 			++TestedFunctionCount;
+			if (Class->GetOutermost()->GetName() == RuntimeScriptPackage)
+			{
+				TestFalse(
+					FString::Printf(TEXT("%s.%s is available at runtime"), *Class->GetName(), *Function->GetName()),
+					Class->GetOutermost()->HasAnyPackageFlags(PKG_EditorOnly | PKG_UncookedOnly | PKG_Developer)
+						|| Function->HasAnyFunctionFlags(FUNC_EditorOnly)
+				);
+			}
+
 			const FString Category = Function->GetMetaData(TEXT("Category"));
 			FString CategoryRoot = Category;
 			int32 CategoryDelimiterIndex = INDEX_NONE;

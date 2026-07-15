@@ -67,7 +67,7 @@ public:
 	 * @param SourceMap - The map to copy from.
 	 * @param bOverwriteExisting - If true, keys already present in TargetMap are overwritten with SourceMap's values.
 	 */
-	UFUNCTION(BlueprintCallable, CustomThunk, meta=(DisplayName = "Append", CompactNodeTitle = "APPEND", MapParam = "TargetMap|SourceMap"), Category="Directive Utilities|Map")
+	UFUNCTION(BlueprintCallable, CustomThunk, meta=(BlueprintInternalUseOnly = "true", DisplayName = "Append", CompactNodeTitle = "APPEND", MapParam = "TargetMap|SourceMap"), Category="Directive Utilities|Map")
 	static void Map_Append(const TMap<int32, int32>& TargetMap, const TMap<int32, int32>& SourceMap, bool bOverwriteExisting = true);
 
 	/*~

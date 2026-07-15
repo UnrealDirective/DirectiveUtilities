@@ -29,7 +29,10 @@ public class DirectiveUtilitiesTests : ModuleRules
 
         if (Target.bBuildEditor)
         {
+            PrivateDependencyModuleNames.Add("BlueprintGraph");
+            PrivateDependencyModuleNames.Add("DirectiveUtilitiesBlueprintNodes");
             PrivateDependencyModuleNames.Add("DirectiveUtilitiesEditor");
+            PrivateDependencyModuleNames.Add("UnrealEd");
         }
     }
 }
