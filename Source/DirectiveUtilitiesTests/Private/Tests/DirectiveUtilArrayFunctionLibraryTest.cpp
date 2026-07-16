@@ -50,6 +50,10 @@ bool FDirectiveUtilArrayFunctionLibraryTest::RunTest(const FString& Parameters)
 		UDirectiveUtilArrayFunctionLibrary::GenericArray_PreviousIndex(&TestObject->TestArray, ArrayProperty, 10, true), 4);
 	TestEqual("Array_PreviousIndex should wrap a negative input index to the last index when looping",
 		UDirectiveUtilArrayFunctionLibrary::GenericArray_PreviousIndex(&TestObject->TestArray, ArrayProperty, -1, true), 4);
+	TestEqual("Array_NextIndex should handle the maximum integer index",
+		UDirectiveUtilArrayFunctionLibrary::GenericArray_NextIndex(&TestObject->TestArray, ArrayProperty, MAX_int32, false), 4);
+	TestEqual("Array_PreviousIndex should handle the minimum integer index",
+		UDirectiveUtilArrayFunctionLibrary::GenericArray_PreviousIndex(&TestObject->TestArray, ArrayProperty, MIN_int32, false), 0);
 
 	TestObject->TestArray = {1, 2, 3, 4, 5};
 
@@ -171,6 +175,9 @@ bool FDirectiveUtilArrayFunctionLibraryTest::RunTest(const FString& Parameters)
 	TestEqual("Slice should clamp a negative start index to 0", SliceOut, TArray<int32>({10, 20}));
 	UDirectiveUtilArrayFunctionLibrary::GenericArray_Slice(&TestObject->TestArray, ArrayProperty, 0, 0, &SliceOut, ArrayProperty);
 	TestEqual("Slice with Count 0 should be empty", SliceOut.Num(), 0);
+	TestObject->TestArray = {10, 20, 30, 40};
+	UDirectiveUtilArrayFunctionLibrary::GenericArray_Slice(&TestObject->TestArray, ArrayProperty, 1, 2, &TestObject->TestArray, ArrayProperty);
+	TestEqual("Slice should support using the source array as its output", TestObject->TestArray, TArray<int32>({20, 30}));
 
 	TestObject->TestArray = {1, 2, 3, 4, 5};
 	UDirectiveUtilArrayFunctionLibrary::GenericArray_Rotate(&TestObject->TestArray, ArrayProperty, 2);
@@ -187,6 +194,22 @@ bool FDirectiveUtilArrayFunctionLibraryTest::RunTest(const FString& Parameters)
 	UDirectiveUtilArrayFunctionLibrary::GenericArray_GetDistinct(&TestObject->TestArray, ArrayProperty, &DistinctOut, ArrayProperty);
 	TestEqual("GetDistinct should keep first occurrences in order", DistinctOut, TArray<int32>({1, 2, 3, 4}));
 	TestEqual("GetDistinct should not modify the source array", TestObject->TestArray.Num(), 6);
+	TestObject->TestArray = {1, 2, 2, 3, 1};
+	UDirectiveUtilArrayFunctionLibrary::GenericArray_GetDistinct(&TestObject->TestArray, ArrayProperty, &TestObject->TestArray, ArrayProperty);
+	TestEqual("GetDistinct should support using the source array as its output", TestObject->TestArray, TArray<int32>({1, 2, 3}));
+
+	FArrayProperty* StringArrayProperty = FindFProperty<FArrayProperty>(UDirectiveUtilTestObject::StaticClass(), GET_MEMBER_NAME_CHECKED(UDirectiveUtilTestObject, TestStringArray));
+	TestNotNull("TestStringArray property should be found", StringArrayProperty);
+	if (StringArrayProperty)
+	{
+		TestObject->TestStringArray = {TEXT("Alpha"), TEXT("Beta"), TEXT("Beta")};
+		UDirectiveUtilArrayFunctionLibrary::GenericArray_GetDistinct(
+			&TestObject->TestStringArray,
+			StringArrayProperty,
+			&TestObject->TestStringArray,
+			StringArrayProperty);
+		TestEqual("GetDistinct should preserve in-place string values", TestObject->TestStringArray, TArray<FString>({TEXT("Alpha"), TEXT("Beta")}));
+	}
 
 	TestObject->TestArray = {5, 1, 5, 2, 5, 3};
 	int32 ItemToCount = 5;
@@ -206,6 +229,24 @@ bool FDirectiveUtilArrayFunctionLibraryTest::RunTest(const FString& Parameters)
 	int32 EmptyMostCount = 5;
 	TestFalse("GetMostCommon should fail on an empty array", UDirectiveUtilArrayFunctionLibrary::GenericArray_GetMostCommon(&TestObject->TestArray, ArrayProperty, &EmptyMostItem, &EmptyMostCount));
 	TestEqual("GetMostCommon should reset the count on an empty array", EmptyMostCount, 0);
+
+	const TArray<FName> MutatingFunctions = {
+		GET_FUNCTION_NAME_CHECKED(UDirectiveUtilArrayFunctionLibrary, Array_RemoveDuplicates),
+		GET_FUNCTION_NAME_CHECKED(UDirectiveUtilArrayFunctionLibrary, Array_Pop),
+		GET_FUNCTION_NAME_CHECKED(UDirectiveUtilArrayFunctionLibrary, Array_PopFirst),
+		GET_FUNCTION_NAME_CHECKED(UDirectiveUtilArrayFunctionLibrary, Array_RemoveAtSwap),
+		GET_FUNCTION_NAME_CHECKED(UDirectiveUtilArrayFunctionLibrary, Array_Rotate)
+	};
+	for (const FName FunctionName : MutatingFunctions)
+	{
+		const UFunction* Function = UDirectiveUtilArrayFunctionLibrary::StaticClass()->FindFunctionByName(FunctionName);
+		const FArrayProperty* TargetArrayProperty = Function ? FindFProperty<FArrayProperty>(Function, TEXT("TargetArray")) : nullptr;
+		TestNotNull(*FString::Printf(TEXT("%s should expose a TargetArray parameter"), *FunctionName.ToString()), TargetArrayProperty);
+		if (TargetArrayProperty)
+		{
+			TestFalse(*FString::Printf(TEXT("%s should expose TargetArray as mutable"), *FunctionName.ToString()), TargetArrayProperty->HasAnyPropertyFlags(CPF_ConstParm));
+		}
+	}
 
 	return true;
 }

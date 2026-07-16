@@ -195,7 +195,7 @@ Formats a byte count as a human-readable size using binary units (1024): B, KB, 
 static FText FormatDuration(float Seconds, bool bIncludeSeconds = true);
 ```
 
-Formats a duration in seconds as d/h/m/s units from the largest nonzero unit down, with two-digit padding after the first (`1h 03m 05s`, `2d 04h`, `45s`). With `bIncludeSeconds` false the seconds unit is dropped and sub-minute durations return `0m`. Negative input gets a leading minus sign; non-finite input returns `0s`. Output is English-only.
+Formats a duration in seconds as d/h/m/s units from the largest nonzero unit down, with two-digit padding after the first (`1h 03m 05s`, `2d 04h`, `45s`). With `bIncludeSeconds` false the seconds unit is dropped and sub-minute durations return `0m`. Negative input gets a leading minus sign when a nonzero unit remains; non-finite input returns `0s`. Output is English-only.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -346,7 +346,7 @@ Returns the population standard deviation of a float array (divides by N, not N-
 static int32 GetRandomIndexFromWeights(const TArray<float>& Weights);
 ```
 
-Returns a random index into the Weights array, where each index's probability is proportional to its weight. Useful for loot tables and weighted spawning. Negative weights are treated as zero.
+Returns a random index into the Weights array, where each index's probability is proportional to its weight. Useful for loot tables and weighted spawning. Negative and non-finite weights are treated as zero.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -366,7 +366,7 @@ Deterministic version of Get Random Index From Weights that draws from (and adva
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | Stream | `FRandomStream&` | The random stream to draw from. |
-| Weights | `const TArray<float>&` | The per-index weights. Negative weights are treated as zero. |
+| Weights | `const TArray<float>&` | The per-index weights. Negative and non-finite weights are treated as zero. |
 
 **Returns:** The selected index, or INDEX_NONE (-1) if the array is empty or all weights are zero.
 

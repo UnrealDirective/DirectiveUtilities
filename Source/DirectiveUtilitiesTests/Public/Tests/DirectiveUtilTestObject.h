@@ -18,6 +18,9 @@ public:
 	TArray<int32> TestArray;
 
 	UPROPERTY()
+	TArray<FString> TestStringArray;
+
+	UPROPERTY()
 	TMap<int32, int32> TestMap;
 
 	UPROPERTY()

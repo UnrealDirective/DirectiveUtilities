@@ -11,7 +11,7 @@
 class UCapsuleComponent;
 class UBoxComponent;
 class USphereComponent;
-class UStaticMeshActor;
+class AStaticMeshActor;
 
 /**
  * DirectiveUtilEditorActorSubsystem

@@ -5,6 +5,19 @@ All notable changes to Directive Utilities are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.2] - 2026-07-15
+
+### Fixed
+- `Slice` and `Get Distinct` now support using the source array as the output, including arrays with non-trivial element types.
+- Array mutators expose mutable pins correctly, and next/previous index helpers handle the full `int32` range without overflow.
+- Duration formatting no longer emits `-0m`, handles large finite inputs safely, and weighted selection ignores non-finite weights.
+- Bare filename validation rejects `.` and `..`, including when used for save-slot operations.
+- Delay and movement tasks handle non-finite values, missing worlds, negative thresholds, and exact-radius completion safely.
+- Gameplay Tag registry queries no longer advertise worker-thread safety.
+
+### Changed
+- Plugin modules build cleanly with explicit includes and unity builds disabled.
+
 ## [2.0.1] - 2026-07-15
 
 ### Fixed

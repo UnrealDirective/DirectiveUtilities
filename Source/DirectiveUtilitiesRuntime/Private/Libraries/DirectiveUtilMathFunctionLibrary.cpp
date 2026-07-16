@@ -98,6 +98,11 @@ namespace
 			? (1.0 - EaseBounceOut(1.0 - 2.0 * t)) * 0.5
 			: (1.0 + EaseBounceOut(2.0 * t - 1.0)) * 0.5;
 	}
+
+	float GetUsableWeight(const float Weight)
+	{
+		return FMath::IsFinite(Weight) && Weight > 0.0f ? Weight : 0.0f;
+	}
 }
 
 float UDirectiveUtilMathFunctionLibrary::PerlinNoise2D(const FVector2D Position)
@@ -200,8 +205,12 @@ FText UDirectiveUtilMathFunctionLibrary::FormatDuration(const float Seconds, con
 		return FText::FromString(TEXT("0s"));
 	}
 
-	const int64 TotalSeconds = static_cast<int64>(FMath::Abs(static_cast<double>(Seconds)));
-	const bool bNegative = Seconds < 0.0f && TotalSeconds > 0;
+	const double AbsoluteSeconds = FMath::Abs(static_cast<double>(Seconds));
+	const int64 TotalSeconds = AbsoluteSeconds >= static_cast<double>(TNumericLimits<int64>::Max())
+		? TNumericLimits<int64>::Max()
+		: static_cast<int64>(AbsoluteSeconds);
+	const int64 VisibleSeconds = bIncludeSeconds ? TotalSeconds : (TotalSeconds / 60) * 60;
+	const bool bNegative = Seconds < 0.0f && VisibleSeconds > 0;
 
 	const int64 UnitValues[] = { TotalSeconds / 86400, (TotalSeconds / 3600) % 24, (TotalSeconds / 60) % 60, TotalSeconds % 60 };
 	static const TCHAR* UnitSuffixes[] = { TEXT("d"), TEXT("h"), TEXT("m"), TEXT("s") };
@@ -399,23 +408,23 @@ float UDirectiveUtilMathFunctionLibrary::GetFloatArrayStandardDeviation(const TA
 
 int32 UDirectiveUtilMathFunctionLibrary::GetRandomIndexFromWeights(const TArray<float>& Weights)
 {
-	float Total = 0.0f;
+	double Total = 0.0;
 	for (const float Weight : Weights)
 	{
-		Total += FMath::Max(0.0f, Weight);
+		Total += GetUsableWeight(Weight);
 	}
 
-	if (Total <= 0.0f)
+	if (Total <= 0.0)
 	{
 		return INDEX_NONE;
 	}
 
-	const float Roll = FMath::FRand() * Total;
-	float Accumulated = 0.0f;
+	const double Roll = static_cast<double>(FMath::FRand()) * Total;
+	double Accumulated = 0.0;
 	int32 LastPositiveIndex = INDEX_NONE;
 	for (int32 Index = 0; Index < Weights.Num(); ++Index)
 	{
-		const float Weight = FMath::Max(0.0f, Weights[Index]);
+		const float Weight = GetUsableWeight(Weights[Index]);
 		if (Weight <= 0.0f)
 		{
 			continue;
@@ -433,23 +442,23 @@ int32 UDirectiveUtilMathFunctionLibrary::GetRandomIndexFromWeights(const TArray<
 
 int32 UDirectiveUtilMathFunctionLibrary::GetRandomIndexFromWeightsFromStream(FRandomStream& Stream, const TArray<float>& Weights)
 {
-	float Total = 0.0f;
+	double Total = 0.0;
 	for (const float Weight : Weights)
 	{
-		Total += FMath::Max(0.0f, Weight);
+		Total += GetUsableWeight(Weight);
 	}
 
-	if (Total <= 0.0f)
+	if (Total <= 0.0)
 	{
 		return INDEX_NONE;
 	}
 
-	const float Roll = Stream.FRand() * Total;
-	float Accumulated = 0.0f;
+	const double Roll = static_cast<double>(Stream.FRand()) * Total;
+	double Accumulated = 0.0;
 	int32 LastPositiveIndex = INDEX_NONE;
 	for (int32 Index = 0; Index < Weights.Num(); ++Index)
 	{
-		const float Weight = FMath::Max(0.0f, Weights[Index]);
+		const float Weight = GetUsableWeight(Weights[Index]);
 		if (Weight <= 0.0f)
 		{
 			continue;

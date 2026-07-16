@@ -144,5 +144,11 @@ bool FDirectiveUtilMapFunctionLibraryTest::RunTest(const FString& Parameters)
 		TestEqual("Append with null or mismatched properties should preserve the value", *UntouchedValue, 10);
 	}
 
+	TestObject->TestMap = {{1, 10}, {2, 20}};
+	UDirectiveUtilMapFunctionLibrary::GenericMap_Append(&TestObject->TestMap, MapProperty, &TestObject->TestMap, MapProperty, true);
+	TestEqual("Append with the same map should preserve its size", TestObject->TestMap.Num(), 2);
+	TestEqual("Append with the same map should preserve the first value", TestObject->TestMap.FindRef(1), 10);
+	TestEqual("Append with the same map should preserve the second value", TestObject->TestMap.FindRef(2), 20);
+
 	return true;
 }

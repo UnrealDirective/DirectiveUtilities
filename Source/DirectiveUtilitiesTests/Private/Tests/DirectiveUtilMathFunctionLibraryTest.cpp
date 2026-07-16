@@ -1,6 +1,8 @@
 #include "Libraries/DirectiveUtilMathFunctionLibrary.h"
 #include "Misc/AutomationTest.h"
 
+#include <limits>
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDirectiveUtilMathFunctionLibraryTest, "DirectiveUtilities.MathFunctionLibraryTests", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FDirectiveUtilMathFunctionLibraryTest::RunTest(const FString& Parameters)
@@ -147,6 +149,10 @@ bool FDirectiveUtilMathFunctionLibraryTest::RunTest(const FString& Parameters)
 		UDirectiveUtilMathFunctionLibrary::GetRandomIndexFromWeights(TArray<float>()), static_cast<int32>(INDEX_NONE));
 	TestEqual("Weighted random with all-zero weights returns INDEX_NONE",
 		UDirectiveUtilMathFunctionLibrary::GetRandomIndexFromWeights({0.0f, 0.0f, 0.0f}), static_cast<int32>(INDEX_NONE));
+	TestEqual("Weighted random ignores non-finite weights",
+		UDirectiveUtilMathFunctionLibrary::GetRandomIndexFromWeights({std::numeric_limits<float>::quiet_NaN(), 1.0f, std::numeric_limits<float>::infinity()}), 1);
+	TestTrue("Weighted random handles large finite totals",
+		UDirectiveUtilMathFunctionLibrary::GetRandomIndexFromWeights({MAX_flt, MAX_flt}) != INDEX_NONE);
 	for (int32 Iteration = 0; Iteration < 25; ++Iteration)
 	{
 		TestEqual("Weighted random {0,1,0} always selects index 1",
@@ -172,6 +178,10 @@ bool FDirectiveUtilMathFunctionLibraryTest::RunTest(const FString& Parameters)
 		UDirectiveUtilMathFunctionLibrary::FormatDuration(45.0f).ToString(), FString(TEXT("45s")));
 	TestEqual("FormatDuration(-90) is \"-1m 30s\"",
 		UDirectiveUtilMathFunctionLibrary::FormatDuration(-90.0f).ToString(), FString(TEXT("-1m 30s")));
+	TestEqual("FormatDuration(-45, false) is \"0m\"",
+		UDirectiveUtilMathFunctionLibrary::FormatDuration(-45.0f, false).ToString(), FString(TEXT("0m")));
+	TestFalse("FormatDuration handles the largest finite float without wrapping negative",
+		UDirectiveUtilMathFunctionLibrary::FormatDuration(MAX_flt).ToString().StartsWith(TEXT("-")));
 
 	TestEqual("FormatRelativeTime 5 minutes back reads \"5 minutes ago\"",
 		UDirectiveUtilMathFunctionLibrary::FormatRelativeTime(FDateTime::Now() - FTimespan::FromMinutes(5)).ToString(), FString(TEXT("5 minutes ago")));

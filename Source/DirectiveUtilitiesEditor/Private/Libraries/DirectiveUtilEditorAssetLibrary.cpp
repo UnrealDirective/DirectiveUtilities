@@ -7,9 +7,11 @@
 #include "AssetRegistry/IAssetRegistry.h"
 #include "AssetRegistry/ARFilter.h"
 #include "AssetToolsModule.h"
+#include "Editor.h"
 #include "IAssetTools.h"
 #include "Misc/AssetRegistryInterface.h"
 #include "Modules/ModuleManager.h"
+#include "Runtime/Launch/Resources/Version.h"
 #include "UObject/ObjectRedirector.h"
 
 namespace

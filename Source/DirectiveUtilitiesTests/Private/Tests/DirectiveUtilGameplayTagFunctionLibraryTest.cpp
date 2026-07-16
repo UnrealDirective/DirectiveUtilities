@@ -109,5 +109,21 @@ bool FDirectiveUtilGameplayTagFunctionLibraryTest::RunTest(const FString& Parame
 	TestEqual("FindRegisteredTags with no match should be empty", UDirectiveUtilGameplayTagFunctionLibrary::FindRegisteredTags(TEXT("DirectiveUtilitiesNoSuchTagXYZ")).Num(), 0);
 	TestEqual("FindRegisteredTags with an empty substring should be empty", UDirectiveUtilGameplayTagFunctionLibrary::FindRegisteredTags(TEXT("")).Num(), 0);
 
+	const TArray<FName> RegistryQueryFunctions = {
+		GET_FUNCTION_NAME_CHECKED(UDirectiveUtilGameplayTagFunctionLibrary, GetTagParents),
+		GET_FUNCTION_NAME_CHECKED(UDirectiveUtilGameplayTagFunctionLibrary, GetTagChildren),
+		GET_FUNCTION_NAME_CHECKED(UDirectiveUtilGameplayTagFunctionLibrary, GetTagDirectChildren),
+		GET_FUNCTION_NAME_CHECKED(UDirectiveUtilGameplayTagFunctionLibrary, IsLeafTag)
+	};
+	for (const FName FunctionName : RegistryQueryFunctions)
+	{
+		const UFunction* Function = UDirectiveUtilGameplayTagFunctionLibrary::StaticClass()->FindFunctionByName(FunctionName);
+		TestNotNull(*FString::Printf(TEXT("%s should be reflected"), *FunctionName.ToString()), Function);
+		if (Function)
+		{
+			TestFalse(*FString::Printf(TEXT("%s should not advertise worker-thread safety"), *FunctionName.ToString()), Function->HasMetaData(TEXT("BlueprintThreadSafe")));
+		}
+	}
+
 	return true;
 }

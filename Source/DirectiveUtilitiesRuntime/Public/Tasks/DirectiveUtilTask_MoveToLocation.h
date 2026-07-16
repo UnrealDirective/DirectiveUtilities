@@ -27,15 +27,15 @@ public:
 	 * bSuccess is true only when the pawn ends within AcceptanceRadius of Destination; the task also ends
 	 * (with the same distance test) when path-following stops for any reason.
 	 *
-	 * If the controller or pawn is destroyed while moving, the task will automatically end.
+	 * If the controller, pawn, or world becomes unavailable while moving, the task will automatically end.
 	 * If bCheckStuckMovement is enabled and the controller gets stuck while moving, the task will automatically end.
 	 *
 	 * @param WorldContextObject The world context object.
 	 * @param Controller The controller to move.
 	 * @param Destination The vector location to move to.
-	 * @param AcceptanceRadius The radius around the destination location that is considered acceptable. Be sure to set this to a reasonable value as the controller may never reach the exact destination.
+	 * @param AcceptanceRadius The radius around the destination location that is considered acceptable. Negative and non-finite values are treated as zero.
 	 * @param bCheckStuckMovement Check if the controller gets stuck while moving.
-	 * @param StuckThreshold The distance threshold to consider the controller stuck.
+	 * @param StuckThreshold The distance threshold to consider the controller stuck. Negative and non-finite values are treated as zero.
 	 * @param bDebugLineTrace Display a line trace to the destination location for a short duration.
 	 */
 	UFUNCTION(
@@ -113,15 +113,15 @@ public:
 	 * (with the same distance test) when path-following stops for any reason. The goal's location is re-read
 	 * every poll, so a moving goal is tracked.
 	 *
-	 * If the controller, pawn, or goal actor is destroyed while moving, the task will automatically end.
+	 * If the controller, pawn, goal actor, or world becomes unavailable while moving, the task will automatically end.
 	 * If bCheckStuckMovement is enabled and the controller gets stuck while moving, the task will automatically end.
 	 *
 	 * @param WorldContextObject The world context object.
 	 * @param Controller The controller to move.
 	 * @param Goal The actor to move to.
-	 * @param AcceptanceRadius The radius around the goal actor that is considered acceptable. Be sure to set this to a reasonable value as the controller may never reach the goal's exact location.
+	 * @param AcceptanceRadius The radius around the goal actor that is considered acceptable. Negative and non-finite values are treated as zero.
 	 * @param bCheckStuckMovement Check if the controller gets stuck while moving.
-	 * @param StuckThreshold The distance threshold to consider the controller stuck.
+	 * @param StuckThreshold The distance threshold to consider the controller stuck. Negative and non-finite values are treated as zero.
 	 */
 	UFUNCTION(
 		BlueprintCallable,

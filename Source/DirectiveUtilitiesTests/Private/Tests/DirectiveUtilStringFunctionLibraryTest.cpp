@@ -232,6 +232,8 @@ bool FDirectiveUtilStringFunctionLibraryTest::RunTest(const FString& Parameters)
     TestFalse("IsValidFileName should reject a backslash", UDirectiveUtilStringFunctionLibrary::IsValidFileName(TEXT("a\\b")));
     TestFalse("IsValidFileName should reject an empty string", UDirectiveUtilStringFunctionLibrary::IsValidFileName(TEXT("")));
     TestFalse("IsValidFileName should reject a reserved character", UDirectiveUtilStringFunctionLibrary::IsValidFileName(TEXT("a:b")));
+    TestFalse("IsValidFileName should reject the current-directory segment", UDirectiveUtilStringFunctionLibrary::IsValidFileName(TEXT(".")));
+    TestFalse("IsValidFileName should reject the parent-directory segment", UDirectiveUtilStringFunctionLibrary::IsValidFileName(TEXT("..")));
 
     {
         const FString Sanitized = UDirectiveUtilStringFunctionLibrary::SanitizeFileName(TEXT("../a/b?.sav"));

@@ -1,5 +1,6 @@
 #if WITH_EDITOR
 
+#include "AssetRegistry/AssetData.h"
 #include "Libraries/DirectiveUtilEditorAssetLibrary.h"
 #include "Engine/World.h"
 #include "Misc/AutomationTest.h"

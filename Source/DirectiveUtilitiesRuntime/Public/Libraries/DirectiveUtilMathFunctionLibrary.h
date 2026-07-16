@@ -138,7 +138,7 @@ public:
 	 * Formats a duration in seconds as d/h/m/s units from the largest nonzero unit down, with
 	 * two-digit padding after the first ("1h 03m 05s", "2d 04h", "45s"). With bIncludeSeconds
 	 * false the seconds unit is dropped and sub-minute durations return "0m". Negative input gets
-	 * a leading minus sign; non-finite input returns "0s". Output is English-only.
+	 * a leading minus sign when a nonzero unit remains; non-finite input returns "0s". Output is English-only.
 	 * @param Seconds - The duration in seconds.
 	 * @param bIncludeSeconds - Whether to include the seconds unit.
 	 * @returns The formatted duration text.
@@ -226,7 +226,7 @@ public:
 
 	/**
 	 * Returns a random index into the Weights array, where each index's probability is proportional to its weight.
-	 * Useful for loot tables and weighted spawning. Negative weights are treated as zero.
+	 * Useful for loot tables and weighted spawning. Negative and non-finite weights are treated as zero.
 	 * @param Weights - The per-index weights.
 	 * @returns The selected index, or INDEX_NONE (-1) if the array is empty or all weights are zero.
 	 */
@@ -236,7 +236,7 @@ public:
 	/**
 	 * Deterministic version of Get Random Index From Weights that draws from (and advances) the provided random stream.
 	 * @param Stream - The random stream to draw from.
-	 * @param Weights - The per-index weights. Negative weights are treated as zero.
+	 * @param Weights - The per-index weights. Negative and non-finite weights are treated as zero.
 	 * @returns The selected index, or INDEX_NONE (-1) if the array is empty or all weights are zero.
 	 */
 	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Get Random Index From Weights (Stream)"), Category = "Directive Utilities|Math|Random")

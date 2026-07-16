@@ -26,7 +26,7 @@ public:
 	 * Call EndTask to cancel the delay before it completes.
 	 *
 	 * @param WorldContextObject The world context object.
-	 * @param Duration The duration of the delay in seconds.
+	 * @param Duration The duration of the delay in seconds. Non-finite and non-positive values complete on the next timer tick.
 	 */
 	UFUNCTION(
 		BlueprintCallable,

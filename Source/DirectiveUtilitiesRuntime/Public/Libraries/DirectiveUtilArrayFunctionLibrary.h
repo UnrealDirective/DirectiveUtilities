@@ -51,7 +51,7 @@ public:
 	 * @param TargetArray - The array to remove duplicates from.
 	 */
 	UFUNCTION(BlueprintCallable, CustomThunk, meta=(DisplayName = "Remove Duplicates", CompactNodeTitle = "REMOVE DUPLICATES", ArrayParm = "TargetArray"), Category="Directive Utilities|Array")
-	static void Array_RemoveDuplicates(const TArray<int32>& TargetArray);
+	static void Array_RemoveDuplicates(UPARAM(ref) TArray<int32>& TargetArray);
 
 	/**
 	 * Returns a copy of the first element of the array.
@@ -106,7 +106,7 @@ public:
 	 * @returns True if an element was removed.
 	 */
 	UFUNCTION(BlueprintCallable, CustomThunk, meta=(DisplayName = "Pop", ArrayParm = "TargetArray", ArrayTypeDependentParams = "OutItem"), Category="Directive Utilities|Array")
-	static bool Array_Pop(const TArray<int32>& TargetArray, int32& OutItem);
+	static bool Array_Pop(UPARAM(ref) TArray<int32>& TargetArray, int32& OutItem);
 
 	/**
 	 * Removes the first element of the array and returns a copy of it.
@@ -115,7 +115,7 @@ public:
 	 * @returns True if an element was removed.
 	 */
 	UFUNCTION(BlueprintCallable, CustomThunk, meta=(DisplayName = "Pop First", ArrayParm = "TargetArray", ArrayTypeDependentParams = "OutItem"), Category="Directive Utilities|Array")
-	static bool Array_PopFirst(const TArray<int32>& TargetArray, int32& OutItem);
+	static bool Array_PopFirst(UPARAM(ref) TArray<int32>& TargetArray, int32& OutItem);
 
 	/**
 	 * Removes the element at the given index by swapping it with the last element (does not preserve order).
@@ -125,7 +125,7 @@ public:
 	 * @returns True if the index was valid and an element was removed.
 	 */
 	UFUNCTION(BlueprintCallable, CustomThunk, meta=(DisplayName = "Remove At Swap", ArrayParm = "TargetArray"), Category="Directive Utilities|Array")
-	static bool Array_RemoveAtSwap(const TArray<int32>& TargetArray, const int32 Index);
+	static bool Array_RemoveAtSwap(UPARAM(ref) TArray<int32>& TargetArray, const int32 Index);
 
 	/**
 	 * Returns a copy of a contiguous range of the array. The range is clamped to the array bounds.
@@ -143,7 +143,7 @@ public:
 	 * @param Shift - The number of positions to rotate. Positive rotates toward the end; negative toward the start.
 	 */
 	UFUNCTION(BlueprintCallable, CustomThunk, meta=(DisplayName = "Rotate", ArrayParm = "TargetArray"), Category="Directive Utilities|Array")
-	static void Array_Rotate(const TArray<int32>& TargetArray, const int32 Shift);
+	static void Array_Rotate(UPARAM(ref) TArray<int32>& TargetArray, const int32 Shift);
 
 	/**
 	 * Returns a copy of the array with duplicates removed, keeping the first occurrence and preserving order.

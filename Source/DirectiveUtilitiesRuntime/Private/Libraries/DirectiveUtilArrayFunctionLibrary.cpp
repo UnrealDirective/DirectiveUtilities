@@ -3,6 +3,53 @@
 
 #include "Libraries/DirectiveUtilArrayFunctionLibrary.h"
 
+#include "Containers/ScriptArray.h"
+
+namespace
+{
+	class FArraySourceView
+	{
+	public:
+		FArraySourceView(const FArrayProperty* ArrayProperty, const void* SourceArray, const void* OutputArray)
+			: SourceData(SourceArray)
+		{
+			if (SourceArray != OutputArray)
+			{
+				return;
+			}
+
+			FScriptArrayHelper SourceHelper(ArrayProperty, SourceArray);
+			SnapshotHelper = MakeUnique<FScriptArrayHelper>(ArrayProperty, &Snapshot);
+			SnapshotHelper->AddValues(SourceHelper.Num());
+			for (int32 Index = 0; Index < SourceHelper.Num(); ++Index)
+			{
+				ArrayProperty->Inner->CopyCompleteValue(
+					SnapshotHelper->GetRawPtr(Index),
+					SourceHelper.GetRawPtr(Index));
+			}
+			SourceData = &Snapshot;
+		}
+
+		~FArraySourceView()
+		{
+			if (SnapshotHelper)
+			{
+				SnapshotHelper->EmptyValues();
+			}
+		}
+
+		const void* GetData() const
+		{
+			return SourceData;
+		}
+
+	private:
+		FScriptArray Snapshot;
+		TUniquePtr<FScriptArrayHelper> SnapshotHelper;
+		const void* SourceData;
+	};
+}
+
 int32 UDirectiveUtilArrayFunctionLibrary::Array_NextIndex(const TArray<int32>& TargetArray, const int32 Index, const bool bLoop)
 {
 	checkNoEntry();
@@ -30,21 +77,19 @@ int32 UDirectiveUtilArrayFunctionLibrary::GenericArray_NextIndex(
 	}
 
 	const FScriptArrayHelper ArrayHelper(ArrayProperty, TargetArray);
-	const int32 NextIndex = Index + 1;
-
-	if(ArrayHelper.Num() == 0)
+	if (ArrayHelper.Num() == 0)
 	{
 		return INDEX_NONE;
 	}
 
-	if(NextIndex < 0)
+	if (Index < -1)
 	{
 		return 0;
 	}
 
-	if (NextIndex <= ArrayHelper.Num() - 1)
+	if (Index < ArrayHelper.Num() - 1)
 	{
-		return NextIndex;
+		return Index + 1;
 	}
 
 	if (bLoop)
@@ -55,7 +100,7 @@ int32 UDirectiveUtilArrayFunctionLibrary::GenericArray_NextIndex(
 	return ArrayHelper.Num() - 1;
 }
 
-void UDirectiveUtilArrayFunctionLibrary::Array_RemoveDuplicates(const TArray<int32>& TargetArray)
+void UDirectiveUtilArrayFunctionLibrary::Array_RemoveDuplicates(TArray<int32>& TargetArray)
 {
 	checkNoEntry();
 }
@@ -97,21 +142,19 @@ int32 UDirectiveUtilArrayFunctionLibrary::GenericArray_PreviousIndex(
 	}
 
 	const FScriptArrayHelper ArrayHelper(ArrayProperty, TargetArray);
-	const int32 PreviousIndex = Index - 1;
-
-	if(ArrayHelper.Num() == 0)
+	if (ArrayHelper.Num() == 0)
 	{
 		return INDEX_NONE;
 	}
 
-	if(PreviousIndex > ArrayHelper.Num() - 1)
+	if (Index > ArrayHelper.Num())
 	{
 		return ArrayHelper.Num() - 1;
 	}
 
-	if (PreviousIndex >= 0)
+	if (Index > 0)
 	{
-		return PreviousIndex;
+		return Index - 1;
 	}
 
 	if (bLoop)
@@ -151,19 +194,19 @@ void UDirectiveUtilArrayFunctionLibrary::Array_LastValue(const TArray<int32>& Ta
 	checkNoEntry();
 }
 
-bool UDirectiveUtilArrayFunctionLibrary::Array_Pop(const TArray<int32>& TargetArray, int32& OutItem)
+bool UDirectiveUtilArrayFunctionLibrary::Array_Pop(TArray<int32>& TargetArray, int32& OutItem)
 {
 	checkNoEntry();
 	return false;
 }
 
-bool UDirectiveUtilArrayFunctionLibrary::Array_PopFirst(const TArray<int32>& TargetArray, int32& OutItem)
+bool UDirectiveUtilArrayFunctionLibrary::Array_PopFirst(TArray<int32>& TargetArray, int32& OutItem)
 {
 	checkNoEntry();
 	return false;
 }
 
-bool UDirectiveUtilArrayFunctionLibrary::Array_RemoveAtSwap(const TArray<int32>& TargetArray, const int32 Index)
+bool UDirectiveUtilArrayFunctionLibrary::Array_RemoveAtSwap(TArray<int32>& TargetArray, const int32 Index)
 {
 	checkNoEntry();
 	return false;
@@ -347,7 +390,7 @@ void UDirectiveUtilArrayFunctionLibrary::Array_Slice(const TArray<int32>& Target
 	checkNoEntry();
 }
 
-void UDirectiveUtilArrayFunctionLibrary::Array_Rotate(const TArray<int32>& TargetArray, const int32 Shift)
+void UDirectiveUtilArrayFunctionLibrary::Array_Rotate(TArray<int32>& TargetArray, const int32 Shift)
 {
 	checkNoEntry();
 }
@@ -377,12 +420,14 @@ void UDirectiveUtilArrayFunctionLibrary::GenericArray_Slice(
 	void* OutArray,
 	const FArrayProperty* OutArrayProperty)
 {
-	if (!TargetArray || !OutArray || !TargetArrayProperty || !OutArrayProperty)
+	if (!TargetArray || !OutArray || !TargetArrayProperty || !OutArrayProperty
+		|| !TargetArrayProperty->Inner->SameType(OutArrayProperty->Inner))
 	{
 		return;
 	}
 
-	FScriptArrayHelper SourceHelper(TargetArrayProperty, TargetArray);
+	const FArraySourceView SourceView(TargetArrayProperty, TargetArray, OutArray);
+	FScriptArrayHelper SourceHelper(TargetArrayProperty, SourceView.GetData());
 	FScriptArrayHelper OutHelper(OutArrayProperty, OutArray);
 	OutHelper.EmptyValues();
 
@@ -449,12 +494,14 @@ void UDirectiveUtilArrayFunctionLibrary::GenericArray_GetDistinct(
 	void* OutArray,
 	const FArrayProperty* OutArrayProperty)
 {
-	if (!TargetArray || !OutArray || !TargetArrayProperty || !OutArrayProperty)
+	if (!TargetArray || !OutArray || !TargetArrayProperty || !OutArrayProperty
+		|| !TargetArrayProperty->Inner->SameType(OutArrayProperty->Inner))
 	{
 		return;
 	}
 
-	FScriptArrayHelper SourceHelper(TargetArrayProperty, TargetArray);
+	const FArraySourceView SourceView(TargetArrayProperty, TargetArray, OutArray);
+	FScriptArrayHelper SourceHelper(TargetArrayProperty, SourceView.GetData());
 	FScriptArrayHelper OutHelper(OutArrayProperty, OutArray);
 	OutHelper.EmptyValues();
 

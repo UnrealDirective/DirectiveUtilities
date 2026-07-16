@@ -13,7 +13,7 @@
 static UDirectiveUtilTask_Delay* CancellableDelay(UObject* WorldContextObject, float Duration);
 ```
 
-Starts a cancellable delay. When the delay finishes the `Completed` delegate fires. Call `EndTask` on the async proxy to cancel the delay before it completes.
+Starts a cancellable delay. When the delay finishes the `Completed` delegate fires. Non-finite and non-positive durations complete on the next timer tick. Call `EndTask` on the async proxy to cancel the delay before it completes.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -198,7 +198,7 @@ static UDirectiveUtilTask_MoveToLocation* MoveToLocation(
     bool bDebugLineTrace = false);
 ```
 
-Moves the actor to the specified location; when movement succeeds or fails the `Completed` delegate fires with the result, exactly once. The task automatically ends if the controller or pawn is destroyed while moving, if path-following stops for any reason (success still requires ending within `AcceptanceRadius`), or if `bCheckStuckMovement` is enabled and the controller gets stuck. Call `EndTask` on the async proxy to manually end the task when it is no longer needed.
+Moves the actor to the specified location; when movement succeeds or fails the `Completed` delegate fires with the result, exactly once. The task automatically ends if the controller, pawn, or world is unavailable, if path-following stops for any reason (success still requires ending within `AcceptanceRadius`), or if `bCheckStuckMovement` is enabled and the controller gets stuck. Negative and non-finite radius and threshold values are clamped to zero. Call `EndTask` on the async proxy to manually end the task when it is no longer needed.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -226,7 +226,7 @@ static UDirectiveUtilTask_MoveToActor* MoveToActor(
     float StuckThreshold = 1.0f);
 ```
 
-Moves the controller's pawn to the goal actor; when movement succeeds or fails the `Completed` delegate fires with the result, exactly once. The goal's location is re-read every poll, so a moving goal is tracked. The task automatically ends if the controller, pawn, or goal actor is destroyed while moving, if path-following stops for any reason (success still requires ending within `AcceptanceRadius` of the goal), or if `bCheckStuckMovement` is enabled and the controller gets stuck. Call `EndTask` on the async proxy to manually end the task when it is no longer needed.
+Moves the controller's pawn to the goal actor; when movement succeeds or fails the `Completed` delegate fires with the result, exactly once. The goal's location is re-read every poll, so a moving goal is tracked. The task automatically ends if the controller, pawn, goal actor, or world is unavailable, if path-following stops for any reason (success still requires ending within `AcceptanceRadius` of the goal), or if `bCheckStuckMovement` is enabled and the controller gets stuck. Negative and non-finite radius and threshold values are clamped to zero. Call `EndTask` on the async proxy to manually end the task when it is no longer needed.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|

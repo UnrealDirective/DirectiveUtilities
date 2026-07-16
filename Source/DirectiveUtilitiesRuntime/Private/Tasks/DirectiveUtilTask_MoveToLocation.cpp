@@ -9,6 +9,13 @@
 #include "Navigation/PathFollowingComponent.h"
 #include "TimerManager.h"
 
+namespace
+{
+	float GetNonNegativeFiniteValue(const float Value)
+	{
+		return FMath::IsFinite(Value) ? FMath::Max(Value, 0.0f) : 0.0f;
+	}
+}
 
 UDirectiveUtilTask_MoveToLocation* UDirectiveUtilTask_MoveToLocation::MoveToLocation(
 	UObject* WorldContextObject,
@@ -22,9 +29,9 @@ UDirectiveUtilTask_MoveToLocation* UDirectiveUtilTask_MoveToLocation::MoveToLoca
 	UDirectiveUtilTask_MoveToLocation* Action = NewObject<UDirectiveUtilTask_MoveToLocation>();
 	Action->Controller = Controller;
 	Action->Destination = Destination;
-	Action->AcceptanceRadius = AcceptanceRadius;
+	Action->AcceptanceRadius = GetNonNegativeFiniteValue(AcceptanceRadius);
 	Action->bDebugLineTrace = bDebugLineTrace;
-	Action->StuckThreshold = StuckThreshold;
+	Action->StuckThreshold = GetNonNegativeFiniteValue(StuckThreshold);
 	Action->bCheckStuckMovement = bCheckStuckMovement;
 
 	if (WorldContextObject)
@@ -43,10 +50,10 @@ void UDirectiveUtilTask_MoveToLocation::EndTask()
 
 void UDirectiveUtilTask_MoveToLocation::Activate()
 {
-	if(!Controller || !Controller->GetPawn())
+	if (!Controller || !Controller->GetPawn() || !Controller->GetWorld())
 	{
 		ExecuteCompleted(false);
-		UE_LOG(LogDirectiveUtil, Warning, TEXT("Controller or pawn has been destroyed while moving to location. Aborting."));
+		UE_LOG(LogDirectiveUtil, Warning, TEXT("Controller, pawn, or world is unavailable while moving to location. Aborting."));
 		return;
 	}
 
@@ -82,17 +89,17 @@ void UDirectiveUtilTask_MoveToLocation::Activate()
 void UDirectiveUtilTask_MoveToLocation::CheckMoveToLocation()
 {
 
-	if(!Controller || !Controller->GetPawn())
+	if (!Controller || !Controller->GetPawn() || !Controller->GetWorld())
 	{
 		ExecuteCompleted(false);
-		UE_LOG(LogDirectiveUtil, Warning, TEXT("Controller or pawn has been destroyed while moving to location. Aborting."));
+		UE_LOG(LogDirectiveUtil, Warning, TEXT("Controller, pawn, or world is unavailable while moving to location. Aborting."));
 		return;
 	}
 
 	CurrentLocation = Controller->GetPawn()->GetActorLocation();
 	UE_LOG(LogDirectiveUtil, Verbose, TEXT("Controller is moving to location (%s). Current distance: %f."), *Destination.ToString(), FVector::Dist(CurrentLocation, Destination));
 
-	if (FVector::Dist(CurrentLocation, Destination) < AcceptanceRadius)
+	if (FVector::Dist(CurrentLocation, Destination) <= AcceptanceRadius)
 	{
 		UE_LOG(LogDirectiveUtil, Verbose, TEXT("Controller has moved to location."));
 		ExecuteCompleted(true);
@@ -103,16 +110,16 @@ void UDirectiveUtilTask_MoveToLocation::CheckMoveToLocation()
 	if (!PathFollowing || PathFollowing->GetStatus() == EPathFollowingStatus::Idle)
 	{
 		UE_LOG(LogDirectiveUtil, Verbose, TEXT("Path following has stopped. Completing move to location."));
-		ExecuteCompleted(FVector::Dist(CurrentLocation, Destination) < AcceptanceRadius);
+		ExecuteCompleted(FVector::Dist(CurrentLocation, Destination) <= AcceptanceRadius);
 	}
 }
 
 void UDirectiveUtilTask_MoveToLocation::CheckStuckMovement()
 {
-	if(!Controller || !Controller->GetPawn())
+	if (!Controller || !Controller->GetPawn() || !Controller->GetWorld())
 	{
 		ExecuteCompleted(false);
-		UE_LOG(LogDirectiveUtil, Warning, TEXT("Controller or pawn has been destroyed while moving to location. Aborting."));
+		UE_LOG(LogDirectiveUtil, Warning, TEXT("Controller, pawn, or world is unavailable while moving to location. Aborting."));
 		return;
 	}
 
@@ -135,7 +142,7 @@ void UDirectiveUtilTask_MoveToLocation::ExecuteCompleted(const bool bSuccess)
 
 	UE_LOG(LogDirectiveUtil, Log, TEXT("Movement to location completed. Success: %s."), bSuccess ? TEXT("true") : TEXT("false"));
 
-	if (Controller)
+	if (Controller && Controller->GetWorld())
 	{
 		Controller->GetWorld()->GetTimerManager().ClearTimer(TimerHandle);
 		Controller->GetWorld()->GetTimerManager().ClearTimer(StuckTimerHandle);
@@ -160,8 +167,8 @@ UDirectiveUtilTask_MoveToActor* UDirectiveUtilTask_MoveToActor::MoveToActor(
 	UDirectiveUtilTask_MoveToActor* Action = NewObject<UDirectiveUtilTask_MoveToActor>();
 	Action->Controller = Controller;
 	Action->Goal = Goal;
-	Action->AcceptanceRadius = AcceptanceRadius;
-	Action->StuckThreshold = StuckThreshold;
+	Action->AcceptanceRadius = GetNonNegativeFiniteValue(AcceptanceRadius);
+	Action->StuckThreshold = GetNonNegativeFiniteValue(StuckThreshold);
 	Action->bCheckStuckMovement = bCheckStuckMovement;
 
 	if (WorldContextObject)
@@ -179,10 +186,10 @@ void UDirectiveUtilTask_MoveToActor::EndTask()
 
 void UDirectiveUtilTask_MoveToActor::Activate()
 {
-	if(!Controller || !Controller->GetPawn() || !IsValid(Goal))
+	if (!Controller || !Controller->GetPawn() || !Controller->GetWorld() || !IsValid(Goal))
 	{
 		ExecuteCompleted(false);
-		UE_LOG(LogDirectiveUtil, Warning, TEXT("Controller, pawn, or goal has been destroyed while moving to actor. Aborting."));
+		UE_LOG(LogDirectiveUtil, Warning, TEXT("Controller, pawn, goal, or world is unavailable while moving to actor. Aborting."));
 		return;
 	}
 
@@ -203,10 +210,10 @@ void UDirectiveUtilTask_MoveToActor::Activate()
 
 void UDirectiveUtilTask_MoveToActor::CheckMoveToActor()
 {
-	if(!Controller || !Controller->GetPawn())
+	if (!Controller || !Controller->GetPawn() || !Controller->GetWorld())
 	{
 		ExecuteCompleted(false);
-		UE_LOG(LogDirectiveUtil, Warning, TEXT("Controller or pawn has been destroyed while moving to actor. Aborting."));
+		UE_LOG(LogDirectiveUtil, Warning, TEXT("Controller, pawn, or world is unavailable while moving to actor. Aborting."));
 		return;
 	}
 
@@ -222,7 +229,7 @@ void UDirectiveUtilTask_MoveToActor::CheckMoveToActor()
 	CurrentLocation = Controller->GetPawn()->GetActorLocation();
 	UE_LOG(LogDirectiveUtil, Verbose, TEXT("Controller is moving to actor (%s). Current distance: %f."), *GetNameSafe(Goal), FVector::Dist(CurrentLocation, GoalLocation));
 
-	if (FVector::Dist(CurrentLocation, GoalLocation) < AcceptanceRadius)
+	if (FVector::Dist(CurrentLocation, GoalLocation) <= AcceptanceRadius)
 	{
 		UE_LOG(LogDirectiveUtil, Verbose, TEXT("Controller has moved to actor."));
 		ExecuteCompleted(true);
@@ -233,16 +240,16 @@ void UDirectiveUtilTask_MoveToActor::CheckMoveToActor()
 	if (!PathFollowing || PathFollowing->GetStatus() == EPathFollowingStatus::Idle)
 	{
 		UE_LOG(LogDirectiveUtil, Verbose, TEXT("Path following has stopped. Completing move to actor."));
-		ExecuteCompleted(FVector::Dist(CurrentLocation, GoalLocation) < AcceptanceRadius);
+		ExecuteCompleted(FVector::Dist(CurrentLocation, GoalLocation) <= AcceptanceRadius);
 	}
 }
 
 void UDirectiveUtilTask_MoveToActor::CheckStuckMovement()
 {
-	if(!Controller || !Controller->GetPawn())
+	if (!Controller || !Controller->GetPawn() || !Controller->GetWorld())
 	{
 		ExecuteCompleted(false);
-		UE_LOG(LogDirectiveUtil, Warning, TEXT("Controller or pawn has been destroyed while moving to actor. Aborting."));
+		UE_LOG(LogDirectiveUtil, Warning, TEXT("Controller, pawn, or world is unavailable while moving to actor. Aborting."));
 		return;
 	}
 
@@ -265,7 +272,7 @@ void UDirectiveUtilTask_MoveToActor::ExecuteCompleted(const bool bSuccess)
 
 	UE_LOG(LogDirectiveUtil, Log, TEXT("Movement to actor completed. Success: %s."), bSuccess ? TEXT("true") : TEXT("false"));
 
-	if (Controller)
+	if (Controller && Controller->GetWorld())
 	{
 		Controller->GetWorld()->GetTimerManager().ClearTimer(TimerHandle);
 		Controller->GetWorld()->GetTimerManager().ClearTimer(StuckTimerHandle);

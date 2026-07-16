@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "AssetRegistry/AssetData.h"
 #include "CoreMinimal.h"
 #include "EditorAssetLibrary.h"
 #include "Types/DirectiveUtilEditorAssetTypes.h"

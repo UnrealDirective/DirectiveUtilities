@@ -396,7 +396,11 @@ int32 UDirectiveUtilStringFunctionLibrary::Crc32Bytes(const TArray<uint8>& Bytes
 
 bool UDirectiveUtilStringFunctionLibrary::IsValidFileName(const FString& String)
 {
-	return !String.IsEmpty() && FPaths::GetCleanFilename(String) == String && SanitizeFileName(String) == String;
+	return !String.IsEmpty()
+		&& String != TEXT(".")
+		&& String != TEXT("..")
+		&& FPaths::GetCleanFilename(String) == String
+		&& SanitizeFileName(String) == String;
 }
 
 FString UDirectiveUtilStringFunctionLibrary::SanitizeFileName(const FString& String, const FString& Replacement)

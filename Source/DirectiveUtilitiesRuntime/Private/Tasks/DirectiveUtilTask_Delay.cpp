@@ -44,7 +44,9 @@ void UDirectiveUtilTask_Delay::Activate()
 		return;
 	}
 
-	const float ClampedDuration = FMath::Max(Duration, KINDA_SMALL_NUMBER);
+	const float ClampedDuration = FMath::IsFinite(Duration)
+		? FMath::Max(Duration, KINDA_SMALL_NUMBER)
+		: KINDA_SMALL_NUMBER;
 	World->GetTimerManager().SetTimer(TimerHandle, this, &UDirectiveUtilTask_Delay::OnDelayComplete, ClampedDuration, false);
 	UE_LOG(LogDirectiveUtil, Verbose, TEXT("Cancellable Delay started for %f seconds."), ClampedDuration);
 }

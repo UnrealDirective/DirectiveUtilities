@@ -32,7 +32,7 @@ public:
 	 * @param Tag - The tag to read.
 	 * @returns A container of the tag's ancestors.
 	 */
-	UFUNCTION(BlueprintPure, Category = "Directive Utilities|GameplayTags", meta = (BlueprintThreadSafe))
+	UFUNCTION(BlueprintPure, Category = "Directive Utilities|GameplayTags")
 	static FGameplayTagContainer GetTagParents(const FGameplayTag& Tag);
 
 	/**
@@ -65,7 +65,7 @@ public:
 	 * @param Tag - The tag to read.
 	 * @returns A container of the tag's descendants, or an empty container for an invalid tag.
 	 */
-	UFUNCTION(BlueprintPure, Category = "Directive Utilities|GameplayTags", meta = (BlueprintThreadSafe))
+	UFUNCTION(BlueprintPure, Category = "Directive Utilities|GameplayTags")
 	static FGameplayTagContainer GetTagChildren(const FGameplayTag& Tag);
 
 	/**
@@ -73,7 +73,7 @@ public:
 	 * @param Tag - The tag to read.
 	 * @returns A container of the tag's direct children, or an empty container for an invalid tag.
 	 */
-	UFUNCTION(BlueprintPure, Category = "Directive Utilities|GameplayTags", meta = (BlueprintThreadSafe))
+	UFUNCTION(BlueprintPure, Category = "Directive Utilities|GameplayTags")
 	static FGameplayTagContainer GetTagDirectChildren(const FGameplayTag& Tag);
 
 	/**
@@ -110,7 +110,7 @@ public:
 	 * @param Tag - The tag to test.
 	 * @returns True if the tag is valid and has no registered descendants; false for an invalid tag.
 	 */
-	UFUNCTION(BlueprintPure, Category = "Directive Utilities|GameplayTags", meta = (BlueprintThreadSafe))
+	UFUNCTION(BlueprintPure, Category = "Directive Utilities|GameplayTags")
 	static bool IsLeafTag(const FGameplayTag& Tag);
 
 	/**

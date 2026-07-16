@@ -3,7 +3,13 @@
 #include "Subsystems/DirectiveUtilEditorActorSubsystem.h"
 
 #include "DirectiveUtilLogChannels.h"
+#include "Components/StaticMeshComponent.h"
+#include "Editor.h"
 #include "Engine/StaticMeshActor.h"
+#include "Engine/StaticMesh.h"
+#include "Engine/Texture2D.h"
+#include "Materials/Material.h"
+#include "Materials/MaterialInterface.h"
 #include "Materials/MaterialExpressionTextureObject.h"
 #include "EditorViewportClient.h"
 #include "Components/BoxComponent.h"
