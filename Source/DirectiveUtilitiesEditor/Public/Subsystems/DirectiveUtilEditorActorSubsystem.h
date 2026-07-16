@@ -44,6 +44,30 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Directive Utilities|Editor")
 	TArray<UClass*> GetAllLevelClasses();
 
+	/** Aligns actor bounds to the combined minimum, center, or maximum on one axis. */
+	UFUNCTION(BlueprintCallable, Category = "Directive Utilities|Editor|Actor Layout")
+	static FDirectiveUtilActorOperationResult AlignActors(
+		const TArray<AActor*>& Actors,
+		EDirectiveUtilActorLayoutAxis Axis,
+		EDirectiveUtilActorAlignment Alignment);
+
+	/** Distributes actors between the outer actors using equal center spacing or equal bounds gaps. */
+	UFUNCTION(BlueprintCallable, Category = "Directive Utilities|Editor|Actor Layout")
+	static FDirectiveUtilActorOperationResult DistributeActors(
+		const TArray<AActor*>& Actors,
+		EDirectiveUtilActorLayoutAxis Axis,
+		EDirectiveUtilActorDistribution Distribution);
+
+	/** Traces from each actor and places its pivot or directional bounds on the hit surface. */
+	UFUNCTION(BlueprintCallable, Category = "Directive Utilities|Editor|Actor Layout", meta = (AdvancedDisplay = "bAlignToNormal"))
+	static FDirectiveUtilActorOperationResult SnapActorsToSurface(
+		const TArray<AActor*>& Actors,
+		FVector TraceDirection,
+		float MaximumDistance,
+		TEnumAsByte<ECollisionChannel> TraceChannel = ECC_Visibility,
+		EDirectiveUtilSurfacePlacement Placement = EDirectiveUtilSurfacePlacement::Bounds,
+		bool bAlignToNormal = false);
+
 	//-----------------------------
 	// Filters
 	//-----------------------------

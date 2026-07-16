@@ -3,6 +3,51 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "DirectiveUtilEditorTypes.generated.h"
+
+class AActor;
+
+UENUM(BlueprintType)
+enum class EDirectiveUtilActorLayoutAxis : uint8
+{
+	X,
+	Y,
+	Z,
+};
+
+UENUM(BlueprintType)
+enum class EDirectiveUtilActorAlignment : uint8
+{
+	Minimum,
+	Center,
+	Maximum,
+};
+
+UENUM(BlueprintType)
+enum class EDirectiveUtilActorDistribution : uint8
+{
+	Centers,
+	BoundsGaps UMETA(DisplayName = "Bounds Gaps"),
+};
+
+UENUM(BlueprintType)
+enum class EDirectiveUtilSurfacePlacement : uint8
+{
+	Pivot,
+	Bounds,
+};
+
+USTRUCT(BlueprintType)
+struct FDirectiveUtilActorOperationResult
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Directive Utilities|Actor Layout")
+	TArray<TObjectPtr<AActor>> ChangedActors;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Directive Utilities|Actor Layout")
+	TArray<TObjectPtr<AActor>> SkippedActors;
+};
 
 /**
  * EDirectiveUtilSelectionMethod

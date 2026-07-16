@@ -16,6 +16,7 @@ public class DirectiveUtilitiesEditor : ModuleRules
 				"Engine",
 				"EditorSubsystem",
 				"EditorScriptingUtilities",
+				"AssetRegistry",
 				"DirectiveUtilitiesRuntime",
 			}
 		);
@@ -26,7 +27,6 @@ public class DirectiveUtilitiesEditor : ModuleRules
 				"Slate",
 				"SlateCore",
 				"UnrealEd",
-				"AssetRegistry",
 				"AssetTools",
 			}
 		);

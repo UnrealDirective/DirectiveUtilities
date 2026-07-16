@@ -2,6 +2,7 @@
 
 
 #include "Libraries/DirectiveUtilEditorAssetLibrary.h"
+#include "Editor.h"
 #include "Subsystems/EditorAssetSubsystem.h"
 #include "Algo/Transform.h"
 #include "AssetRegistry/IAssetRegistry.h"

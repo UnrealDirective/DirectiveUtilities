@@ -7,6 +7,7 @@
 #include "Editor.h"
 #include "Engine/StaticMeshActor.h"
 #include "Engine/StaticMesh.h"
+#include "Engine/Texture.h"
 #include "Engine/Texture2D.h"
 #include "Materials/Material.h"
 #include "Materials/MaterialInterface.h"
@@ -16,10 +17,17 @@
 #include "Components/CapsuleComponent.h"
 #include "Components/SphereComponent.h"
 #include "Materials/MaterialExpressionTextureSample.h"
+#include "Runtime/Launch/Resources/Version.h"
 #include "ScopedTransaction.h"
+#include "Engine/World.h"
 
 namespace
 {
+	bool MatchesTextureReference(const UTexture* Texture, const TSoftObjectPtr<UTexture2D>& TextureReference)
+	{
+		return Texture && FSoftObjectPath(Texture) == TextureReference.ToSoftObjectPath();
+	}
+
 	// Adds an actor to OutActors when whether it matches the predicate (evaluated once across all of the
 	// actor's components) equals whether matches are being included. Centralizes the include/exclude
 	// aggregation so a multi-component actor is judged per-actor rather than per-component.
@@ -51,6 +59,123 @@ namespace
 				Seen.Add(Actor);
 				OutActors.Add(Actor);
 			}
+		}
+	}
+
+	struct FActorLayoutData
+	{
+		AActor* Actor = nullptr;
+		FBox Bounds = FBox(ForceInit);
+		FVector Location = FVector::ZeroVector;
+		int32 AttachmentDepth = 0;
+	};
+
+	float GetAxisValue(const FVector& Vector, const EDirectiveUtilActorLayoutAxis Axis)
+	{
+		switch (Axis)
+		{
+		case EDirectiveUtilActorLayoutAxis::X:
+			return Vector.X;
+		case EDirectiveUtilActorLayoutAxis::Y:
+			return Vector.Y;
+		case EDirectiveUtilActorLayoutAxis::Z:
+			return Vector.Z;
+		}
+		return 0.0f;
+	}
+
+	void SetAxisValue(FVector& Vector, const EDirectiveUtilActorLayoutAxis Axis, const float Value)
+	{
+		switch (Axis)
+		{
+		case EDirectiveUtilActorLayoutAxis::X:
+			Vector.X = Value;
+			break;
+		case EDirectiveUtilActorLayoutAxis::Y:
+			Vector.Y = Value;
+			break;
+		case EDirectiveUtilActorLayoutAxis::Z:
+			Vector.Z = Value;
+			break;
+		}
+	}
+
+	int32 GetAttachmentDepth(const AActor* Actor)
+	{
+		int32 Depth = 0;
+		TSet<const AActor*> Visited;
+		for (const AActor* Parent = Actor ? Actor->GetAttachParentActor() : nullptr;
+			Parent && !Visited.Contains(Parent);
+			Parent = Parent->GetAttachParentActor())
+		{
+			Visited.Add(Parent);
+			++Depth;
+		}
+		return Depth;
+	}
+
+	bool IsLayoutActorValid(AActor* Actor)
+	{
+		return IsValid(Actor)
+			&& Actor->GetWorld()
+			&& !Actor->HasAnyFlags(RF_Transient)
+			&& !Actor->IsActorBeingDestroyed();
+	}
+
+	TArray<FActorLayoutData> GetLayoutActors(
+		const TArray<AActor*>& Actors,
+		FDirectiveUtilActorOperationResult& Result)
+	{
+		TArray<FActorLayoutData> LayoutActors;
+		TSet<AActor*> Seen;
+		for (AActor* Actor : Actors)
+		{
+			if (!Actor || Seen.Contains(Actor))
+			{
+				continue;
+			}
+			Seen.Add(Actor);
+
+			if (!IsLayoutActorValid(Actor))
+			{
+				Result.SkippedActors.Add(Actor);
+				continue;
+			}
+
+			FActorLayoutData Data;
+			Data.Actor = Actor;
+			Data.Location = Actor->GetActorLocation();
+			Data.Bounds = Actor->GetComponentsBoundingBox(true, true);
+			if (!Data.Bounds.IsValid)
+			{
+				Data.Bounds = FBox(Data.Location, Data.Location);
+			}
+			Data.AttachmentDepth = GetAttachmentDepth(Actor);
+			LayoutActors.Add(MoveTemp(Data));
+		}
+		return LayoutActors;
+	}
+
+	void ApplyLocations(
+		TArray<FActorLayoutData>& LayoutActors,
+		const TMap<AActor*, FVector>& Locations,
+		FDirectiveUtilActorOperationResult& Result)
+	{
+		LayoutActors.Sort([](const FActorLayoutData& Left, const FActorLayoutData& Right) {
+			return Left.AttachmentDepth < Right.AttachmentDepth;
+		});
+
+		for (const FActorLayoutData& Data : LayoutActors)
+		{
+			const FVector* Location = Locations.Find(Data.Actor);
+			if (!Location || Data.Actor->GetActorLocation().Equals(*Location))
+			{
+				continue;
+			}
+
+			Data.Actor->Modify();
+			Data.Actor->SetActorLocation(*Location, false, nullptr, ETeleportType::TeleportPhysics);
+			Result.ChangedActors.Add(Data.Actor);
 		}
 	}
 }
@@ -88,6 +213,211 @@ TArray<UClass*> UDirectiveUtilEditorActorSubsystem::GetAllLevelClasses()
 	}
 
 	return ActorClasses;
+}
+
+FDirectiveUtilActorOperationResult UDirectiveUtilEditorActorSubsystem::AlignActors(
+	const TArray<AActor*>& Actors,
+	const EDirectiveUtilActorLayoutAxis Axis,
+	const EDirectiveUtilActorAlignment Alignment)
+{
+	FDirectiveUtilActorOperationResult Result;
+	TArray<FActorLayoutData> LayoutActors = GetLayoutActors(Actors, Result);
+	if (LayoutActors.Num() < 2)
+	{
+		return Result;
+	}
+
+	FBox CombinedBounds(ForceInit);
+	for (const FActorLayoutData& Data : LayoutActors)
+	{
+		CombinedBounds += Data.Bounds;
+	}
+
+	float Target = 0.0f;
+	switch (Alignment)
+	{
+	case EDirectiveUtilActorAlignment::Minimum:
+		Target = GetAxisValue(CombinedBounds.Min, Axis);
+		break;
+	case EDirectiveUtilActorAlignment::Center:
+		Target = GetAxisValue(CombinedBounds.GetCenter(), Axis);
+		break;
+	case EDirectiveUtilActorAlignment::Maximum:
+		Target = GetAxisValue(CombinedBounds.Max, Axis);
+		break;
+	}
+
+	TMap<AActor*, FVector> Locations;
+	for (const FActorLayoutData& Data : LayoutActors)
+	{
+		const float Current = Alignment == EDirectiveUtilActorAlignment::Minimum
+			? GetAxisValue(Data.Bounds.Min, Axis)
+			: Alignment == EDirectiveUtilActorAlignment::Maximum
+				? GetAxisValue(Data.Bounds.Max, Axis)
+				: GetAxisValue(Data.Bounds.GetCenter(), Axis);
+		FVector Location = Data.Location;
+		SetAxisValue(Location, Axis, GetAxisValue(Location, Axis) + Target - Current);
+		Locations.Add(Data.Actor, Location);
+	}
+
+	const FScopedTransaction Transaction(NSLOCTEXT("DirectiveUtilities", "AlignActors", "Align Actors"));
+	ApplyLocations(LayoutActors, Locations, Result);
+	return Result;
+}
+
+FDirectiveUtilActorOperationResult UDirectiveUtilEditorActorSubsystem::DistributeActors(
+	const TArray<AActor*>& Actors,
+	const EDirectiveUtilActorLayoutAxis Axis,
+	const EDirectiveUtilActorDistribution Distribution)
+{
+	FDirectiveUtilActorOperationResult Result;
+	TArray<FActorLayoutData> LayoutActors = GetLayoutActors(Actors, Result);
+	if (LayoutActors.Num() < 3)
+	{
+		return Result;
+	}
+
+	LayoutActors.Sort([Axis](const FActorLayoutData& Left, const FActorLayoutData& Right) {
+		return GetAxisValue(Left.Bounds.GetCenter(), Axis) < GetAxisValue(Right.Bounds.GetCenter(), Axis);
+	});
+
+	TMap<AActor*, FVector> Locations;
+	if (Distribution == EDirectiveUtilActorDistribution::Centers)
+	{
+		const float Start = GetAxisValue(LayoutActors[0].Bounds.GetCenter(), Axis);
+		const float End = GetAxisValue(LayoutActors.Last().Bounds.GetCenter(), Axis);
+		const float Spacing = (End - Start) / (LayoutActors.Num() - 1);
+		for (int32 Index = 1; Index < LayoutActors.Num() - 1; ++Index)
+		{
+			const FActorLayoutData& Data = LayoutActors[Index];
+			FVector Location = Data.Location;
+			const float Delta = Start + Spacing * Index - GetAxisValue(Data.Bounds.GetCenter(), Axis);
+			SetAxisValue(Location, Axis, GetAxisValue(Location, Axis) + Delta);
+			Locations.Add(Data.Actor, Location);
+		}
+	}
+	else
+	{
+		float TotalSize = 0.0f;
+		for (const FActorLayoutData& Data : LayoutActors)
+		{
+			TotalSize += GetAxisValue(Data.Bounds.GetSize(), Axis);
+		}
+		const float Start = GetAxisValue(LayoutActors[0].Bounds.Min, Axis);
+		const float End = GetAxisValue(LayoutActors.Last().Bounds.Max, Axis);
+		const float Gap = (End - Start - TotalSize) / (LayoutActors.Num() - 1);
+		float NextMinimum = GetAxisValue(LayoutActors[0].Bounds.Max, Axis) + Gap;
+		for (int32 Index = 1; Index < LayoutActors.Num() - 1; ++Index)
+		{
+			const FActorLayoutData& Data = LayoutActors[Index];
+			FVector Location = Data.Location;
+			const float Delta = NextMinimum - GetAxisValue(Data.Bounds.Min, Axis);
+			SetAxisValue(Location, Axis, GetAxisValue(Location, Axis) + Delta);
+			Locations.Add(Data.Actor, Location);
+			NextMinimum += GetAxisValue(Data.Bounds.GetSize(), Axis) + Gap;
+		}
+	}
+
+	const FScopedTransaction Transaction(NSLOCTEXT("DirectiveUtilities", "DistributeActors", "Distribute Actors"));
+	ApplyLocations(LayoutActors, Locations, Result);
+	return Result;
+}
+
+FDirectiveUtilActorOperationResult UDirectiveUtilEditorActorSubsystem::SnapActorsToSurface(
+	const TArray<AActor*>& Actors,
+	const FVector TraceDirection,
+	const float MaximumDistance,
+	const TEnumAsByte<ECollisionChannel> TraceChannel,
+	const EDirectiveUtilSurfacePlacement Placement,
+	const bool bAlignToNormal)
+{
+	FDirectiveUtilActorOperationResult Result;
+	TArray<FActorLayoutData> LayoutActors = GetLayoutActors(Actors, Result);
+	if (LayoutActors.IsEmpty() || MaximumDistance <= 0.0f || TraceDirection.IsNearlyZero())
+	{
+		for (const FActorLayoutData& Data : LayoutActors)
+		{
+			Result.SkippedActors.Add(Data.Actor);
+		}
+		return Result;
+	}
+
+	const FVector Direction = TraceDirection.GetSafeNormal();
+	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(DirectiveUtilitiesSnapActors), true);
+	for (const FActorLayoutData& Data : LayoutActors)
+	{
+		QueryParams.AddIgnoredActor(Data.Actor);
+	}
+
+	struct FSnapTarget
+	{
+		FVector Location;
+		FQuat Rotation;
+	};
+	TMap<AActor*, FSnapTarget> Targets;
+	for (const FActorLayoutData& Data : LayoutActors)
+	{
+		FHitResult Hit;
+		const FVector Start = Data.Location;
+		if (!Data.Actor->GetWorld()->LineTraceSingleByChannel(
+			Hit,
+			Start,
+			Start + Direction * MaximumDistance,
+			TraceChannel,
+			QueryParams))
+		{
+			Result.SkippedActors.Add(Data.Actor);
+			continue;
+		}
+
+		FVector Location = Hit.Location;
+		if (Placement == EDirectiveUtilSurfacePlacement::Bounds)
+		{
+			const FVector Extent = Data.Bounds.GetExtent();
+			const float Support = FMath::Abs(Direction.X) * Extent.X
+				+ FMath::Abs(Direction.Y) * Extent.Y
+				+ FMath::Abs(Direction.Z) * Extent.Z;
+			Location = Hit.Location - Direction * Support - (Data.Bounds.GetCenter() - Data.Location);
+		}
+
+		FQuat Rotation = Data.Actor->GetActorQuat();
+		if (bAlignToNormal)
+		{
+			Rotation = FQuat::FindBetweenNormals(Rotation.GetUpVector(), Hit.ImpactNormal) * Rotation;
+			Rotation.Normalize();
+		}
+		Targets.Add(Data.Actor, {Location, Rotation});
+	}
+
+	LayoutActors.Sort([](const FActorLayoutData& Left, const FActorLayoutData& Right) {
+		return Left.AttachmentDepth < Right.AttachmentDepth;
+	});
+	const FScopedTransaction Transaction(NSLOCTEXT("DirectiveUtilities", "SnapActorsToSurface", "Snap Actors To Surface"));
+	for (const FActorLayoutData& Data : LayoutActors)
+	{
+		const FSnapTarget* Target = Targets.Find(Data.Actor);
+		if (!Target)
+		{
+			continue;
+		}
+
+		const bool bLocationChanged = !Data.Actor->GetActorLocation().Equals(Target->Location);
+		const bool bRotationChanged = !Data.Actor->GetActorQuat().Equals(Target->Rotation);
+		if (!bLocationChanged && !bRotationChanged)
+		{
+			continue;
+		}
+
+		Data.Actor->Modify();
+		Data.Actor->SetActorLocationAndRotation(
+			Target->Location,
+			Target->Rotation,
+			false,
+			nullptr,
+			ETeleportType::TeleportPhysics);
+		Result.ChangedActors.Add(Data.Actor);
+	}
+	return Result;
 }
 
 void UDirectiveUtilEditorActorSubsystem::FilterStaticMeshActors(
@@ -741,11 +1071,11 @@ void UDirectiveUtilEditorActorSubsystem::FilterActorsByTexture(
 					{
 						if (const UMaterialExpressionTextureSample* TextureSample = Cast<UMaterialExpressionTextureSample>(Expression))
 						{
-							if (TextureSample->Texture == TextureReference) { return true; }
+							if (MatchesTextureReference(TextureSample->Texture, TextureReference)) { return true; }
 						}
 						if (const UMaterialExpressionTextureObject* TextureObject = Cast<UMaterialExpressionTextureObject>(Expression))
 						{
-							if (TextureObject->Texture == TextureReference) { return true; }
+							if (MatchesTextureReference(TextureObject->Texture, TextureReference)) { return true; }
 						}
 					}
 				}
@@ -763,11 +1093,11 @@ void UDirectiveUtilEditorActorSubsystem::FilterActorsByTexture(
 					{
 						if (const UMaterialExpressionTextureSample* TextureSample = Cast<UMaterialExpressionTextureSample>(Expression))
 						{
-							if (TextureSample->Texture == TextureReference) { return true; }
+							if (MatchesTextureReference(TextureSample->Texture, TextureReference)) { return true; }
 						}
 						if (const UMaterialExpressionTextureObject* TextureObject = Cast<UMaterialExpressionTextureObject>(Expression))
 						{
-							if (TextureObject->Texture == TextureReference) { return true; }
+							if (MatchesTextureReference(TextureObject->Texture, TextureReference)) { return true; }
 						}
 					}
 				}
@@ -1294,11 +1624,11 @@ void UDirectiveUtilEditorActorSubsystem::GetActorsByTextureSoftReference(
 				{
 					if (const UMaterialExpressionTextureSample* TextureSample = Cast<UMaterialExpressionTextureSample>(Expression))
 					{
-						if (TextureSample->Texture == Texture) { return true; }
+						if (MatchesTextureReference(TextureSample->Texture, Texture)) { return true; }
 					}
 					if (const UMaterialExpressionTextureObject* TextureObject = Cast<UMaterialExpressionTextureObject>(Expression))
 					{
-						if (TextureObject->Texture == Texture) { return true; }
+						if (MatchesTextureReference(TextureObject->Texture, Texture)) { return true; }
 					}
 				}
 			}
