@@ -33,6 +33,72 @@ Get all unique classes used in the level.
 
 **Returns:** The list of unique classes found in the level.
 
+## Align Actors
+**Type:** Blueprint Callable &nbsp;|&nbsp; **Category:** `Directive Utilities|Editor|Actor Layout`
+
+```cpp
+static FDirectiveUtilActorOperationResult AlignActors(
+    const TArray<AActor*>& Actors,
+    EDirectiveUtilActorLayoutAxis Axis,
+    EDirectiveUtilActorAlignment Alignment);
+```
+
+Aligns actor bounds on one world axis. Minimum and maximum alignment use the outer edge of the combined bounds. Center alignment uses the center of the combined bounds. Other location axes are unchanged.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| Actors | `TArray<AActor*>` | The actors to align. Editor selection is not read. |
+| Axis | `EDirectiveUtilActorLayoutAxis` | X, Y, or Z. |
+| Alignment | `EDirectiveUtilActorAlignment` | Minimum, center, or maximum bounds alignment. |
+
+**Returns:** Actors whose locations changed and actors skipped because they were invalid, transient, or pending destruction. Duplicate inputs are processed once. The operation uses one undo transaction and preserves attachments.
+
+## Distribute Actors
+**Type:** Blueprint Callable &nbsp;|&nbsp; **Category:** `Directive Utilities|Editor|Actor Layout`
+
+```cpp
+static FDirectiveUtilActorOperationResult DistributeActors(
+    const TArray<AActor*>& Actors,
+    EDirectiveUtilActorLayoutAxis Axis,
+    EDirectiveUtilActorDistribution Distribution);
+```
+
+Sorts actors by bounds center and distributes the actors between the two outer actors. Center mode uses equal center-to-center spacing. Bounds Gaps mode uses equal empty space between adjacent bounds. The outer actors remain in place.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| Actors | `TArray<AActor*>` | The actors to distribute. At least three valid actors are required. |
+| Axis | `EDirectiveUtilActorLayoutAxis` | X, Y, or Z. |
+| Distribution | `EDirectiveUtilActorDistribution` | Equal center spacing or equal bounds gaps. |
+
+**Returns:** Actors whose locations changed and actors skipped during validation. The operation uses one undo transaction and preserves attachments.
+
+## Snap Actors To Surface
+**Type:** Blueprint Callable &nbsp;|&nbsp; **Category:** `Directive Utilities|Editor|Actor Layout`
+
+```cpp
+static FDirectiveUtilActorOperationResult SnapActorsToSurface(
+    const TArray<AActor*>& Actors,
+    FVector TraceDirection,
+    float MaximumDistance,
+    ECollisionChannel TraceChannel,
+    EDirectiveUtilSurfacePlacement Placement,
+    bool bAlignToNormal = false);
+```
+
+Traces from each actor location and moves the actor to the first blocking hit. Pivot mode places the pivot on the hit. Bounds mode offsets the actor so its directional bounds touch the hit. Input actors are ignored by every trace.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| Actors | `TArray<AActor*>` | The actors to snap. Editor selection is not read. |
+| TraceDirection | `FVector` | The trace direction. It is normalized before use. |
+| MaximumDistance | `float` | The maximum trace distance. Must be greater than zero. |
+| TraceChannel | `ECollisionChannel` | The collision channel used by the trace. |
+| Placement | `EDirectiveUtilSurfacePlacement` | Places the pivot or bounds on the hit. |
+| bAlignToNormal | `bool` | Rotates the actor so its up vector matches the hit normal. |
+
+**Returns:** Actors whose transforms changed and actors skipped because validation failed or no surface was hit. The operation uses one undo transaction and preserves attachments.
+
 ---
 
 ## Filters

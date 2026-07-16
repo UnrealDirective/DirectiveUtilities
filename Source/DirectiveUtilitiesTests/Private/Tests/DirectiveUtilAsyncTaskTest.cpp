@@ -12,27 +12,16 @@
 #include "UObject/SoftObjectPtr.h"
 #include "Misc/AutomationTest.h"
 
-#if WITH_EDITOR
-
 namespace DirectiveUtilAsyncTaskTestHelpers
 {
-	/**
-	 * Spawns a transient world, starts a cancellable delay in it, and returns a rooted listener bound
-	 * to the delay's Completed delegate. The world is stored on the listener so the latent command can
-	 * tick its timer manager across frames and tear it down once the scenario settles.
-	 *
-	 * A timer set on a never-ticked FTimerManager is queued as pending and only promoted to active on
-	 * the first tick; it fires on a later tick. Because a manager can be ticked at most once per frame,
-	 * driving the timer to completion requires advancing real frames, hence the latent command below.
-	 */
 	UDirectiveUtilDelegateListener* StartDelayScenario(float Duration, bool bCancel)
 	{
-		UWorld* World = UWorld::CreateWorld(EWorldType::Editor, false);
+		UWorld* World = UWorld::CreateWorld(EWorldType::Game, false);
 		if (!World)
 		{
 			return nullptr;
 		}
-		FWorldContext& WorldContext = GEngine->CreateNewWorldContext(EWorldType::Editor);
+		FWorldContext& WorldContext = GEngine->CreateNewWorldContext(EWorldType::Game);
 		WorldContext.SetCurrentWorld(World);
 
 		UDirectiveUtilDelegateListener* Listener = NewObject<UDirectiveUtilDelegateListener>();
@@ -53,10 +42,6 @@ namespace DirectiveUtilAsyncTaskTestHelpers
 	}
 }
 
-/**
- * Latent command that ticks a delay scenario's world each frame until the delay completes or the
- * frame budget runs out, then asserts against the expected outcome and tears the world down.
- */
 DEFINE_LATENT_AUTOMATION_COMMAND_FOUR_PARAMETER(FDirectiveUtilTickDelayScenario, FAutomationTestBase*, Test, UDirectiveUtilDelegateListener*, Listener, int32, FramesRemaining, bool, bExpectComplete);
 
 bool FDirectiveUtilTickDelayScenario::Update()
@@ -99,38 +84,30 @@ bool FDirectiveUtilTickDelayScenario::Update()
 	return false;
 }
 
-/**
- * DirectiveUtilTask_Delay: verifies the timer-backed completion fires, that EndTask cancels it before it fires,
- * and that activating with a null world context is guarded rather than crashing.
- */
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDirectiveUtilDelayTaskTest, "DirectiveUtilities.AsyncTaskDelayTests", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDirectiveUtilDelayTaskTest, "DirectiveUtilities.AsyncTaskDelayTests", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
 
 bool FDirectiveUtilDelayTaskTest::RunTest(const FString& Parameters)
 {
-	// The null-world activation intentionally logs a warning.
 	AddExpectedMessagePlain(TEXT("Cancellable Delay failed to activate. World is null."), ELogVerbosity::Warning, EAutomationExpectedMessageFlags::Contains, -1);
 
-	// Completion path: the delay fires once its timer elapses (driven across frames by the latent command).
-	if (UDirectiveUtilDelegateListener* Completed = DirectiveUtilAsyncTaskTestHelpers::StartDelayScenario(0.05f, /*bCancel=*/false))
+	if (UDirectiveUtilDelegateListener* Completed = DirectiveUtilAsyncTaskTestHelpers::StartDelayScenario(0.05f, false))
 	{
-		ADD_LATENT_AUTOMATION_COMMAND(FDirectiveUtilTickDelayScenario(this, Completed, 600, /*bExpectComplete=*/true));
+		ADD_LATENT_AUTOMATION_COMMAND(FDirectiveUtilTickDelayScenario(this, Completed, 600, true));
 	}
 	else
 	{
 		AddError(TEXT("Failed to create a transient world for the delay completion scenario."));
 	}
 
-	// Cancellation path: EndTask clears the timer so Completed never fires across a short window.
-	if (UDirectiveUtilDelegateListener* Cancelled = DirectiveUtilAsyncTaskTestHelpers::StartDelayScenario(0.05f, /*bCancel=*/true))
+	if (UDirectiveUtilDelegateListener* Cancelled = DirectiveUtilAsyncTaskTestHelpers::StartDelayScenario(0.05f, true))
 	{
-		ADD_LATENT_AUTOMATION_COMMAND(FDirectiveUtilTickDelayScenario(this, Cancelled, 10, /*bExpectComplete=*/false));
+		ADD_LATENT_AUTOMATION_COMMAND(FDirectiveUtilTickDelayScenario(this, Cancelled, 10, false));
 	}
 	else
 	{
 		AddError(TEXT("Failed to create a transient world for the delay cancellation scenario."));
 	}
 
-	// Null world guard: activating with a null context object logs a warning and does not crash.
 	UDirectiveUtilTask_Delay* NullWorldTask = UDirectiveUtilTask_Delay::CancellableDelay(nullptr, 0.05f);
 	if (TestNotNull("CancellableDelay returns a task even with a null context", NullWorldTask))
 	{
@@ -142,7 +119,6 @@ bool FDirectiveUtilDelayTaskTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-/** Latent command that waits for an async-load listener to settle (completed or failed) or times out. */
 DEFINE_LATENT_AUTOMATION_COMMAND_THREE_PARAMETER(FDirectiveUtilWaitForAsyncLoad, FAutomationTestBase*, Test, UDirectiveUtilDelegateListener*, Listener, int32, FramesRemaining);
 
 bool FDirectiveUtilWaitForAsyncLoad::Update()
@@ -179,18 +155,12 @@ bool FDirectiveUtilWaitForAsyncLoad::Update()
 	return false;
 }
 
-/**
- * DirectiveUtilTask_AsyncLoadAsset: verifies the null soft-reference path broadcasts Failed synchronously, and
- * that loading a real engine asset eventually broadcasts Completed with the resolved object.
- */
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDirectiveUtilAsyncLoadAssetTest, "DirectiveUtilities.AsyncTaskLoadAssetTests", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDirectiveUtilAsyncLoadAssetTest, "DirectiveUtilities.AsyncTaskLoadAssetTests", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
 
 bool FDirectiveUtilAsyncLoadAssetTest::RunTest(const FString& Parameters)
 {
-	// The null soft-reference path intentionally logs a warning.
 	AddExpectedMessagePlain(TEXT("Async Load Asset failed to activate. The soft object reference is null."), ELogVerbosity::Warning, EAutomationExpectedMessageFlags::Contains, -1);
 
-	// Failure path: a null soft reference broadcasts Failed synchronously on activation.
 	{
 		UDirectiveUtilDelegateListener* Listener = NewObject<UDirectiveUtilDelegateListener>();
 		Listener->AddToRoot();
@@ -208,7 +178,6 @@ bool FDirectiveUtilAsyncLoadAssetTest::RunTest(const FString& Parameters)
 		Listener->Keepalive = nullptr;
 	}
 
-	// Success path: loading a real engine asset broadcasts Completed with the resolved object.
 	{
 		UDirectiveUtilDelegateListener* Listener = NewObject<UDirectiveUtilDelegateListener>();
 		Listener->AddToRoot();
@@ -220,14 +189,12 @@ bool FDirectiveUtilAsyncLoadAssetTest::RunTest(const FString& Parameters)
 		Task->Failed.AddDynamic(Listener, &UDirectiveUtilDelegateListener::OnObjectFailed);
 		Task->Activate();
 
-		// The streamable completion delegate fires on a later engine tick; poll until it settles.
 		ADD_LATENT_AUTOMATION_COMMAND(FDirectiveUtilWaitForAsyncLoad(this, Listener, 600));
 	}
 
 	return true;
 }
 
-/** Latent command that waits for a batch async-load listener to complete, then asserts the slot contract. */
 DEFINE_LATENT_AUTOMATION_COMMAND_THREE_PARAMETER(FDirectiveUtilWaitForBatchAsyncLoad, FAutomationTestBase*, Test, UDirectiveUtilDelegateListener*, Listener, int32, FramesRemaining);
 
 bool FDirectiveUtilWaitForBatchAsyncLoad::Update()
@@ -263,7 +230,6 @@ bool FDirectiveUtilWaitForBatchAsyncLoad::Update()
 	return false;
 }
 
-/** Latent command that waits a fixed frame window and then asserts a cancelled batch load never completed. */
 DEFINE_LATENT_AUTOMATION_COMMAND_THREE_PARAMETER(FDirectiveUtilVerifyCancelledBatchLoad, FAutomationTestBase*, Test, UDirectiveUtilDelegateListener*, Listener, int32, FramesRemaining);
 
 bool FDirectiveUtilVerifyCancelledBatchLoad::Update()
@@ -284,15 +250,10 @@ bool FDirectiveUtilVerifyCancelledBatchLoad::Update()
 	return true;
 }
 
-/**
- * DirectiveUtilTask_AsyncLoadAssets: verifies a batch resolves in input order with null slots for unset references,
- * that an empty input completes immediately with an empty array, and that Cancel suppresses Completed.
- */
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDirectiveUtilAsyncLoadAssetsTest, "DirectiveUtilities.AsyncTaskLoadAssetsTests", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDirectiveUtilAsyncLoadAssetsTest, "DirectiveUtilities.AsyncTaskLoadAssetsTests", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
 
 bool FDirectiveUtilAsyncLoadAssetsTest::RunTest(const FString& Parameters)
 {
-	// Empty input: Completed broadcasts synchronously on activation with an empty array.
 	{
 		UDirectiveUtilDelegateListener* Listener = NewObject<UDirectiveUtilDelegateListener>();
 		Listener->AddToRoot();
@@ -310,7 +271,6 @@ bool FDirectiveUtilAsyncLoadAssetsTest::RunTest(const FString& Parameters)
 		Listener->RemoveFromRoot();
 	}
 
-	// Batch path: two valid engine meshes plus an unset reference resolve in input order.
 	{
 		UDirectiveUtilDelegateListener* Listener = NewObject<UDirectiveUtilDelegateListener>();
 		Listener->AddToRoot();
@@ -325,13 +285,9 @@ bool FDirectiveUtilAsyncLoadAssetsTest::RunTest(const FString& Parameters)
 		Task->Completed.AddDynamic(Listener, &UDirectiveUtilDelegateListener::OnObjectsCompleted);
 		Task->Activate();
 
-		// The streamable completion delegate fires on a later engine tick; poll until it settles.
 		ADD_LATENT_AUTOMATION_COMMAND(FDirectiveUtilWaitForBatchAsyncLoad(this, Listener, 600));
 	}
 
-	// Cancel path: cancelling before completion suppresses the Completed broadcast. Uses a mesh no
-	// other test loads so the request is genuinely in flight when Cancel arrives; if the asset is
-	// already in memory the batch completes synchronously and there is nothing left to cancel.
 	{
 		UDirectiveUtilDelegateListener* Listener = NewObject<UDirectiveUtilDelegateListener>();
 		Listener->AddToRoot();
@@ -360,18 +316,12 @@ bool FDirectiveUtilAsyncLoadAssetsTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-/**
- * DirectiveUtilTask_AsyncLoadClass: verifies the null soft-class path broadcasts Failed synchronously, and that
- * loading a real class broadcasts Completed with the resolved class.
- */
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDirectiveUtilAsyncLoadClassTest, "DirectiveUtilities.AsyncTaskLoadClassTests", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDirectiveUtilAsyncLoadClassTest, "DirectiveUtilities.AsyncTaskLoadClassTests", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
 
 bool FDirectiveUtilAsyncLoadClassTest::RunTest(const FString& Parameters)
 {
-	// The null soft-class path intentionally logs a warning.
 	AddExpectedMessagePlain(TEXT("Async Load Class failed to activate. The soft class reference is null."), ELogVerbosity::Warning, EAutomationExpectedMessageFlags::Contains, -1);
 
-	// Failure path: a null soft class reference broadcasts Failed synchronously on activation.
 	{
 		UDirectiveUtilDelegateListener* Listener = NewObject<UDirectiveUtilDelegateListener>();
 		Listener->AddToRoot();
@@ -389,7 +339,6 @@ bool FDirectiveUtilAsyncLoadClassTest::RunTest(const FString& Parameters)
 		Listener->Keepalive = nullptr;
 	}
 
-	// Success path: loading a real class broadcasts Completed with the resolved class.
 	{
 		UDirectiveUtilDelegateListener* Listener = NewObject<UDirectiveUtilDelegateListener>();
 		Listener->AddToRoot();
@@ -401,11 +350,8 @@ bool FDirectiveUtilAsyncLoadClassTest::RunTest(const FString& Parameters)
 		Task->Failed.AddDynamic(Listener, &UDirectiveUtilDelegateListener::OnClassFailed);
 		Task->Activate();
 
-		// The streamable completion delegate fires on a later engine tick; poll until it settles.
 		ADD_LATENT_AUTOMATION_COMMAND(FDirectiveUtilWaitForAsyncLoad(this, Listener, 600));
 	}
 
 	return true;
 }
-
-#endif // WITH_EDITOR

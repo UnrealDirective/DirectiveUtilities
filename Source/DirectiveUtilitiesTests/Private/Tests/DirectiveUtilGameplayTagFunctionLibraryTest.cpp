@@ -4,7 +4,7 @@
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDirectiveUtilGameplayTagFunctionLibraryTest, "DirectiveUtilities.GameplayTagFunctionLibraryTests", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDirectiveUtilGameplayTagFunctionLibraryTest, "DirectiveUtilities.GameplayTagFunctionLibraryTests", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
 
 bool FDirectiveUtilGameplayTagFunctionLibraryTest::RunTest(const FString& Parameters)
 {

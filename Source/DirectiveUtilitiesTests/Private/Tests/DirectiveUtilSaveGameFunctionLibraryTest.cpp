@@ -4,7 +4,7 @@
 #include "GameFramework/SaveGame.h"
 #include "Misc/AutomationTest.h"
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDirectiveUtilSaveGameFunctionLibraryTest, "DirectiveUtilities.SaveGameFunctionLibraryTests", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDirectiveUtilSaveGameFunctionLibraryTest, "DirectiveUtilities.SaveGameFunctionLibraryTests", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
 
 bool FDirectiveUtilSaveGameFunctionLibraryTest::RunTest(const FString& Parameters)
 {

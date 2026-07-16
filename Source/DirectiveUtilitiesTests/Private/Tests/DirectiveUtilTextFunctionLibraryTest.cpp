@@ -1,7 +1,7 @@
 #include "Libraries/DirectiveUtilTextFunctionLibrary.h"
 #include "Misc/AutomationTest.h"
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDirectiveUtilTextFunctionLibraryTest, "DirectiveUtilities.TextFunctionLibraryTests", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDirectiveUtilTextFunctionLibraryTest, "DirectiveUtilities.TextFunctionLibraryTests", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
 
 bool FDirectiveUtilTextFunctionLibraryTest::RunTest(const FString& Parameters)
 {

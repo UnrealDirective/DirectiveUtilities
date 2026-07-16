@@ -2,7 +2,7 @@
 #include "Tests/DirectiveUtilTestObject.h"
 #include "Misc/AutomationTest.h"
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDirectiveUtilMapFunctionLibraryTest, "DirectiveUtilities.MapFunctionLibraryTests", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDirectiveUtilMapFunctionLibraryTest, "DirectiveUtilities.MapFunctionLibraryTests", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
 
 bool FDirectiveUtilMapFunctionLibraryTest::RunTest(const FString& Parameters)
 {

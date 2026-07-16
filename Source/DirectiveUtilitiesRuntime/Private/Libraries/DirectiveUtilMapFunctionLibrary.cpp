@@ -179,7 +179,6 @@ void UDirectiveUtilMapFunctionLibrary::GenericMap_Append(
 		return;
 	}
 
-	// Appending a map onto itself is a no-op; bail before AddPair can reallocate under the source pointers.
 	if (TargetMap == SourceMap)
 	{
 		return;

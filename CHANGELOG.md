@@ -5,6 +5,31 @@ All notable changes to Directive Utilities are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Array sampling with optional replacement, seeded sampling, zero-based pagination, and natural sorting for string and name arrays.
+- Editor slow tasks with progress, cancellation checks, explicit finish, and automatic cleanup when the task object is destroyed.
+- Editor notifications with neutral, success, warning, and failure states.
+- Read-only asset audits for unreferenced candidates, missing references, dependency cycles, disk use, dependency counts, referencer counts, primary assets, and CSV export.
+- Read-only Blueprint inspection by compile status, parent class, interface, component class, and unused variables.
+- Undoable actor alignment, distribution, and surface snapping with explicit actor inputs and changed/skipped results.
+- Automation coverage for the new runtime and editor nodes.
+
+### Changed
+- Duplicate removal, distinct copies, and most-common lookup use property hashes when Unreal exposes them.
+- Sparse sampling no longer allocates an index for every source item. POD rotation uses bulk moves, while managed values keep property-aware swaps.
+- Natural sorting caches comparison data instead of rebuilding it during each comparison.
+- Numeric medians use selection instead of sorting the full array. Fuzzy string matching reuses its working buffers.
+- Gameplay Tag depth and ancestry queries walk parent tags instead of splitting names into arrays.
+- Added repeatable runtime performance tests with CSV baselines for the optimized operations.
+- Added table-driven and seeded correctness cases from empty inputs through 4,096 items.
+- Runtime automation can now execute in packaged clients, and wildcard pin tests cover every generic array and map node.
+
+### Fixed
+- Array slice, distinct, sampling, and pagination functions now support using the same array as both input and output.
+- Generic array outputs reject mismatched element types without modifying the destination array.
+
 ## [2.0.2] - 2026-07-15
 
 ### Fixed

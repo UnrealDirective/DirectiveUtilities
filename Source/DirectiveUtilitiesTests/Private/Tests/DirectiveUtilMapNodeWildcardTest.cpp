@@ -13,6 +13,7 @@
 #include "Libraries/DirectiveUtilMapFunctionLibrary.h"
 #include "Nodes/DirectiveUtilMapNodeMigration.h"
 #include "Nodes/K2Node_DirectiveUtilMapAppend.h"
+#include "Tests/DirectiveUtilTestObject.h"
 
 namespace DirectiveUtilMapNodeTest
 {
@@ -29,11 +30,17 @@ namespace DirectiveUtilMapNodeTest
 		TArray<FDependentPin> DependentPins;
 	};
 
-	FEdGraphPinType MakeMapType(const FName KeyCategory, const FName ValueCategory)
+	FEdGraphPinType MakeMapType(
+		const FName KeyCategory,
+		const FName ValueCategory,
+		UObject* KeySubCategoryObject = nullptr,
+		UObject* ValueSubCategoryObject = nullptr)
 	{
 		FEdGraphPinType PinType;
 		PinType.PinCategory = KeyCategory;
+		PinType.PinSubCategoryObject = KeySubCategoryObject;
 		PinType.PinValueType.TerminalCategory = ValueCategory;
+		PinType.PinValueType.TerminalSubCategoryObject = ValueSubCategoryObject;
 		PinType.ContainerType = EPinContainerType::Map;
 		return PinType;
 	}
@@ -84,6 +91,26 @@ namespace DirectiveUtilMapNodeTest
 		return Pin.PinType.IsMap()
 			&& Pin.PinType.PinCategory == KeyCategory
 			&& Pin.PinType.PinValueType.TerminalCategory == ValueCategory;
+	}
+
+	bool HasMapType(const UEdGraphPin& Pin, const FEdGraphPinType& ExpectedType)
+	{
+		return Pin.PinType.IsMap()
+			&& Pin.PinType.PinCategory == ExpectedType.PinCategory
+			&& Pin.PinType.PinSubCategory == ExpectedType.PinSubCategory
+			&& Pin.PinType.PinSubCategoryObject == ExpectedType.PinSubCategoryObject
+			&& Pin.PinType.PinValueType == ExpectedType.PinValueType;
+	}
+
+	bool HasElementType(
+		const UEdGraphPin& Pin,
+		const FName Category,
+		UObject* SubCategoryObject,
+		const EPinContainerType ContainerType)
+	{
+		return Pin.PinType.PinCategory == Category
+			&& Pin.PinType.PinSubCategoryObject == SubCategoryObject
+			&& Pin.PinType.ContainerType == ContainerType;
 	}
 }
 
@@ -144,6 +171,51 @@ bool FDirectiveUtilMapNodeWildcardTest::RunTest(const FString& Parameters)
 		}
 	}
 
+	const FEdGraphPinType ObjectStructMap = MakeMapType(
+		UEdGraphSchema_K2::PC_Object,
+		UEdGraphSchema_K2::PC_Struct,
+		UDirectiveUtilTestObject::StaticClass(),
+		FDirectiveUtilCollisionValue::StaticStruct());
+	for (const FMapNodeCase& NodeCase : NodeCases)
+	{
+		UEdGraph* Graph = MakeGraph();
+		UK2Node_CallFunction* Node = AddFunctionNode(*Graph, NodeCase.FunctionName);
+		UEdGraphPin* TargetMap = Node->FindPin(TEXT("TargetMap"));
+		if (!TestNotNull(*FString::Printf(TEXT("%s should have a typed TargetMap pin"), *NodeCase.FunctionName.ToString()), TargetMap))
+		{
+			continue;
+		}
+
+		UEdGraphPin* MapOutput = AddMapOutput(*Graph, TEXT("ObjectStructMapOutput"), ObjectStructMap);
+		Connect(*MapOutput, *Node, *TargetMap);
+		TestTrue(
+			*FString::Printf(TEXT("%s should preserve map subtype objects"), *NodeCase.FunctionName.ToString()),
+			HasMapType(*TargetMap, ObjectStructMap));
+		for (const FDependentPin& ExpectedPin : NodeCase.DependentPins)
+		{
+			const UEdGraphPin* DependentPin = Node->FindPin(ExpectedPin.Name);
+			if (!DependentPin)
+			{
+				continue;
+			}
+			const bool bUsesKeyType = ExpectedPin.Name == TEXT("Key") || ExpectedPin.Name == TEXT("Keys");
+			TestTrue(
+				*FString::Printf(TEXT("%s should preserve %s subtype"), *NodeCase.FunctionName.ToString(), *ExpectedPin.Name.ToString()),
+				HasElementType(
+					*DependentPin,
+					bUsesKeyType ? UEdGraphSchema_K2::PC_Object : UEdGraphSchema_K2::PC_Struct,
+					bUsesKeyType
+						? static_cast<UObject*>(UDirectiveUtilTestObject::StaticClass())
+						: static_cast<UObject*>(FDirectiveUtilCollisionValue::StaticStruct()),
+					ExpectedPin.ContainerType));
+		}
+
+		Disconnect(*MapOutput, *Node, *TargetMap);
+		TestTrue(
+			*FString::Printf(TEXT("%s should reset after a typed disconnect"), *NodeCase.FunctionName.ToString()),
+			HasMapType(*TargetMap, UEdGraphSchema_K2::PC_Wildcard, UEdGraphSchema_K2::PC_Wildcard));
+	}
+
 	UEdGraph* AppendGraph = MakeGraph();
 	UK2Node_DirectiveUtilMapAppend* AppendNode = NewObject<UK2Node_DirectiveUtilMapAppend>(AppendGraph);
 	AppendGraph->AddNode(AppendNode);
@@ -189,6 +261,12 @@ bool FDirectiveUtilMapNodeWildcardTest::RunTest(const FString& Parameters)
 	Disconnect(*SourceOutput, *AppendNode, *SourceMap);
 	TestTrue("Append TargetMap should reset after disconnect", HasMapType(*TargetMap, UEdGraphSchema_K2::PC_Wildcard, UEdGraphSchema_K2::PC_Wildcard));
 	TestTrue("Append SourceMap should reset after disconnect", HasMapType(*SourceMap, UEdGraphSchema_K2::PC_Wildcard, UEdGraphSchema_K2::PC_Wildcard));
+
+	UEdGraphPin* TypedSourceOutput = AddMapOutput(*AppendGraph, TEXT("TypedSourceOutput"), ObjectStructMap);
+	Connect(*TypedSourceOutput, *AppendNode, *SourceMap);
+	TestTrue("Append TargetMap should preserve subtype objects", HasMapType(*TargetMap, ObjectStructMap));
+	TestTrue("Append SourceMap should preserve subtype objects", HasMapType(*SourceMap, ObjectStructMap));
+	Disconnect(*TypedSourceOutput, *AppendNode, *SourceMap);
 
 	UEdGraph* MigrationGraph = MakeGraph();
 	UBlueprint* MigrationBlueprint = CastChecked<UBlueprint>(MigrationGraph->GetOuter());

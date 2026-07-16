@@ -4,6 +4,7 @@
 #include "Types/DirectiveUtilInputTypes.h"
 #include "Types/DirectiveUtilTypes.h"
 #include "InputMappingContext.h"
+#include "EnhancedPlayerInput.h"
 #include "EnhancedInputSubsystems.h"
 #include "Engine/GameInstance.h"
 #include "Engine/LocalPlayer.h"
@@ -12,18 +13,10 @@
 #include "GameFramework/PlayerController.h"
 #include "Misc/AutomationTest.h"
 
-#if WITH_EDITOR
-
-/**
- * Exercises the Enhanced Input library's active paths against a real EnhancedInput subsystem,
- * which requires a live local player. A standalone game instance + local player is built for this;
- * if that cannot be created in the headless harness the test skips its assertions rather than failing.
- */
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDirectiveUtilInputActivePathTest, "DirectiveUtilities.InputActivePathTests", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDirectiveUtilInputActivePathTest, "DirectiveUtilities.InputActivePathTests", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
 
 bool FDirectiveUtilInputActivePathTest::RunTest(const FString& Parameters)
 {
-	// These warnings only fire on the graceful-skip paths; allow (but never require) them.
 	AddExpectedMessagePlain(TEXT("LocalPlayer not found. Cannot set input mapping contexts."), ELogVerbosity::Warning, EAutomationExpectedMessageFlags::Contains, -1);
 	AddExpectedMessagePlain(TEXT("EnhancedInput subsystem not found."), ELogVerbosity::Warning, EAutomationExpectedMessageFlags::Contains, -1);
 
@@ -38,8 +31,6 @@ bool FDirectiveUtilInputActivePathTest::RunTest(const FString& Parameters)
 
 	UWorld* World = GameInstance->GetWorld();
 
-	// CreateLocalPlayer ensures when there is no game viewport client (headless), so build the local
-	// player directly via AddLocalPlayer, which initializes the local-player subsystems without one.
 	UClass* LocalPlayerClass = GEngine->LocalPlayerClass ? GEngine->LocalPlayerClass.Get() : ULocalPlayer::StaticClass();
 	ULocalPlayer* LocalPlayer = NewObject<ULocalPlayer>(GEngine, LocalPlayerClass);
 	if (World && LocalPlayer)
@@ -64,6 +55,8 @@ bool FDirectiveUtilInputActivePathTest::RunTest(const FString& Parameters)
 		return true;
 	}
 	PlayerController->SetPlayer(LocalPlayer);
+	PlayerController->InitInputSystem();
+	PlayerController->PlayerInput = NewObject<UEnhancedPlayerInput>(PlayerController);
 
 	UEnhancedInputLocalPlayerSubsystem* Subsystem = UDirectiveUtilInputFunctionLibrary::GetEnhancedInputSubsystem(PlayerController);
 	if (!Subsystem)
@@ -74,8 +67,13 @@ bool FDirectiveUtilInputActivePathTest::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	// We have a live subsystem: exercise the active add/active/swap/remove/clear paths for real.
 	TestNotNull("GetEnhancedInputSubsystem returns the subsystem for a live local player", Subsystem);
+	auto ApplyPendingMappings = [Subsystem]
+	{
+		FModifyContextOptions Options;
+		Options.bForceImmediately = true;
+		Subsystem->RequestRebuildControlMappings(Options);
+	};
 
 	UInputMappingContext* ContextA = NewObject<UInputMappingContext>(GetTransientPackage());
 	UInputMappingContext* ContextB = NewObject<UInputMappingContext>(GetTransientPackage());
@@ -84,7 +82,6 @@ bool FDirectiveUtilInputActivePathTest::RunTest(const FString& Parameters)
 	const TSoftObjectPtr<UInputMappingContext> SoftA(ContextA);
 	const TSoftObjectPtr<UInputMappingContext> SoftB(ContextB);
 
-	// Add context A.
 	FDirectiveUtilEnhancedInputContextData DataA;
 	DataA.InputContext = SoftA;
 	DataA.Priority = 0;
@@ -93,38 +90,39 @@ bool FDirectiveUtilInputActivePathTest::RunTest(const FString& Parameters)
 	TestEqual("AddInputMappingContexts succeeds for a live controller",
 		UDirectiveUtilInputFunctionLibrary::AddInputMappingContexts(PlayerController, ToAdd, false),
 		EDirectiveUtilSuccessStatus::Success);
+	ApplyPendingMappings();
 	TestTrue("Added context is reported active",
 		UDirectiveUtilInputFunctionLibrary::IsInputMappingContextActive(PlayerController, SoftA));
 
-	// Swap A -> B.
 	TestEqual("SwapInputMappingContexts succeeds",
 		UDirectiveUtilInputFunctionLibrary::SwapInputMappingContexts(PlayerController, SoftA, SoftB, 0, false),
 		EDirectiveUtilSuccessStatus::Success);
+	ApplyPendingMappings();
 	TestFalse("Swapped-out context is inactive",
 		UDirectiveUtilInputFunctionLibrary::IsInputMappingContextActive(PlayerController, SoftA));
 	TestTrue("Swapped-in context is active",
 		UDirectiveUtilInputFunctionLibrary::IsInputMappingContextActive(PlayerController, SoftB));
 
-	// Remove B.
 	TArray<TSoftObjectPtr<UInputMappingContext>> ToRemove;
 	ToRemove.Add(SoftB);
 	TestEqual("RemoveInputMappingContexts succeeds",
 		UDirectiveUtilInputFunctionLibrary::RemoveInputMappingContexts(PlayerController, ToRemove),
 		EDirectiveUtilSuccessStatus::Success);
+	ApplyPendingMappings();
 	TestFalse("Removed context is inactive",
 		UDirectiveUtilInputFunctionLibrary::IsInputMappingContextActive(PlayerController, SoftB));
 
-	// Clear all (after re-adding A).
 	UDirectiveUtilInputFunctionLibrary::AddInputMappingContexts(PlayerController, ToAdd, false);
 	TestEqual("ClearAllInputMappingContexts succeeds",
 		UDirectiveUtilInputFunctionLibrary::ClearAllInputMappingContexts(PlayerController),
 		EDirectiveUtilSuccessStatus::Success);
+	ApplyPendingMappings();
 	TestFalse("Context is inactive after clear-all",
 		UDirectiveUtilInputFunctionLibrary::IsInputMappingContextActive(PlayerController, SoftA));
 
-	// A clearing add whose every context fails to load must leave the existing mappings untouched.
 	AddExpectedMessagePlain(TEXT("Input Mapping Contexts failed to load and were not added!"), ELogVerbosity::Warning, EAutomationExpectedMessageFlags::Contains, -1);
 	UDirectiveUtilInputFunctionLibrary::AddInputMappingContexts(PlayerController, ToAdd, false);
+	ApplyPendingMappings();
 	FDirectiveUtilEnhancedInputContextData UnresolvableData;
 	UnresolvableData.Priority = 0;
 	TArray<FDirectiveUtilEnhancedInputContextData> UnresolvableToAdd;
@@ -142,5 +140,3 @@ bool FDirectiveUtilInputActivePathTest::RunTest(const FString& Parameters)
 
 	return true;
 }
-
-#endif // WITH_EDITOR

@@ -1,7 +1,7 @@
 #include "Libraries/DirectiveUtilRegexFunctionLibrary.h"
 #include "Misc/AutomationTest.h"
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDirectiveUtilRegexFunctionLibraryTest, "DirectiveUtilities.RegexFunctionLibraryTests", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDirectiveUtilRegexFunctionLibraryTest, "DirectiveUtilities.RegexFunctionLibraryTests", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
 
 bool FDirectiveUtilRegexFunctionLibraryTest::RunTest(const FString& Parameters)
 {

@@ -3,7 +3,7 @@
 #include "InputMappingContext.h"
 #include "Misc/AutomationTest.h"
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDirectiveUtilInputFunctionLibraryTest, "DirectiveUtilities.InputFunctionLibraryTests", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDirectiveUtilInputFunctionLibraryTest, "DirectiveUtilities.InputFunctionLibraryTests", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
 
 bool FDirectiveUtilInputFunctionLibraryTest::RunTest(const FString& Parameters)
 {

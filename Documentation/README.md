@@ -33,7 +33,10 @@ Per-library reference for every Blueprint-exposed node. Each page lists the modu
 
 ### Editor
 - [Editor Asset Library](Nodes/EditorAssetLibrary.md) - asset query and management helpers.
-- [Editor Actor Subsystem](Nodes/EditorActorSubsystem.md) - actor filters, selection helpers, and viewport utilities.
+- [Editor Asset Audit Library](Nodes/EditorAssetAuditLibrary.md) - read-only content audits and CSV reports.
+- [Editor Blueprint Library](Nodes/EditorBlueprintLibrary.md) - read-only Blueprint inspection.
+- [Editor Task Library](Nodes/EditorTaskLibrary.md) - progress tasks and notifications.
+- [Editor Actor Subsystem](Nodes/EditorActorSubsystem.md) - actor filters, selection helpers, layout operations, and viewport utilities.
 
 ## Contributing to the docs
 When behavior changes, update the matching page in `Nodes/` in the same pull request. Include the Blueprint category, C++ signature, parameter table, output pins, and edge cases that affect how developers use the node.

@@ -11,15 +11,17 @@ Version 2.0 replaces UDCore 1.x. Existing Blueprint assets migrate through bundl
 
 | Area | Utilities |
 |------|-----------|
-| Arrays and maps | Wildcard container nodes for indexing, lookup, removal, merging, and duplicate handling. |
+| Arrays and maps | Wildcard container nodes for indexing, lookup, removal, merging, sampling, pagination, natural sorting, and duplicate handling. |
 | Strings, text, and regex | Validation, filtering, case conversion, fuzzy matching, hashing, encoding, capture groups, and replacement. |
 | Math | Easing, weighted random selection, rounding, angle helpers, Perlin noise, formatting, and array statistics. |
 | Gameplay Tags | Hierarchy navigation, ancestry checks, sibling queries, and registry search. |
 | Save games | Slot enumeration, timestamps, byte serialization, validation, deletion, and renaming. |
 | Enhanced Input | Subsystem access and mapping-context operations. |
 | Async work | Delay, asset and class loading, traces, and navigation movement. |
-| Editor actors | Actor filters, selection tools, viewport controls, material operations, and mesh queries. |
-| Editor assets | Asset Registry queries and asset management helpers for editor scripts. |
+| Editor actors | Actor filters, selection tools, viewport controls, layout operations, surface snapping, material operations, and mesh queries. |
+| Editor assets | Asset Registry queries, read-only content audits, and asset management helpers for editor scripts. |
+| Editor Blueprints | Read-only searches for compile status, inheritance, interfaces, components, and unused variables. |
+| Editor tasks | Progress dialogs and notifications for Editor Utility Widgets and scripts. |
 
 Blueprint nodes appear under `Directive Utilities` in the Blueprint palette. The [node reference](Documentation/README.md#node-reference) lists every exposed function with its category, parameters, outputs, and edge cases.
 

@@ -3,6 +3,7 @@
 #include "Misc/AutomationTest.h"
 #include "UObject/Class.h"
 #include "UObject/Package.h"
+#include "UObject/UnrealType.h"
 #include "UObject/UObjectIterator.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDirectiveUtilBlueprintCategoryTest, "DirectiveUtilities.BlueprintCategoryTests", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

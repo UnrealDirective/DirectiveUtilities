@@ -12,13 +12,11 @@
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/DefaultPawn.h"
 #include "GameFramework/PlayerController.h"
+#include "TimerManager.h"
 #include "Misc/AutomationTest.h"
-
-#if WITH_EDITOR
 
 namespace DirectiveUtilAsyncTraceTestHelpers
 {
-	/** Creates a transient game world with a physics scene, initialized for play so traces resolve. */
 	UWorld* CreateTraceWorld()
 	{
 		UWorld* World = UWorld::CreateWorld(EWorldType::Game, false);
@@ -33,7 +31,6 @@ namespace DirectiveUtilAsyncTraceTestHelpers
 		return World;
 	}
 
-	/** Spawns a blocking cube actor at the origin so traces have something to hit. */
 	AStaticMeshActor* SpawnBlockingCube(UWorld* World, UStaticMesh* CubeMesh)
 	{
 		AStaticMeshActor* Cube = World->SpawnActor<AStaticMeshActor>(FVector::ZeroVector, FRotator::ZeroRotator);
@@ -42,15 +39,10 @@ namespace DirectiveUtilAsyncTraceTestHelpers
 		Component->SetStaticMesh(CubeMesh);
 		Component->SetCollisionProfileName(TEXT("BlockAll"));
 		Component->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-		Component->UpdateCollisionProfile();
 		return Cube;
 	}
 }
 
-/**
- * Latent command that ticks a trace world each frame until every listener has reported completion
- * (or the frame budget runs out), asserts the expected outcome, and tears the world down.
- */
 class FDirectiveUtilTickTraceWorld : public IAutomationLatentCommand
 {
 public:
@@ -111,18 +103,12 @@ private:
 	int32 FramesRemaining;
 };
 
-/**
- * DirectiveUtilTask_AsyncTrace: verifies the null-world guard broadcasts an empty result, and that each trace
- * shape (line, sphere, box, capsule) resolves against a blocking body and reports a hit.
- */
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDirectiveUtilAsyncTraceTest, "DirectiveUtilities.AsyncTaskTraceTests", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDirectiveUtilAsyncTraceTest, "DirectiveUtilities.AsyncTaskTraceTests", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
 
 bool FDirectiveUtilAsyncTraceTest::RunTest(const FString& Parameters)
 {
-	// The null-world activation intentionally logs a warning.
 	AddExpectedMessagePlain(TEXT("Async Trace failed to activate. World is null."), ELogVerbosity::Warning, EAutomationExpectedMessageFlags::Contains, -1);
 
-	// Null world guard: activating with a null context broadcasts an empty result and does not crash.
 	{
 		UDirectiveUtilDelegateListener* Listener = NewObject<UDirectiveUtilDelegateListener>();
 		Listener->AddToRoot();
@@ -154,10 +140,9 @@ bool FDirectiveUtilAsyncTraceTest::RunTest(const FString& Parameters)
 	}
 	DirectiveUtilAsyncTraceTestHelpers::SpawnBlockingCube(World, CubeMesh);
 
-	// Trace straight down through the cube at the origin so every shape intersects it.
 	const FVector Start(0.0f, 0.0f, 500.0f);
 	const FVector End(0.0f, 0.0f, -500.0f);
-	const ETraceTypeQuery Channel = ETraceTypeQuery::TraceTypeQuery1; // Visibility, which BlockAll blocks.
+	const ETraceTypeQuery VisibilityChannel = ETraceTypeQuery::TraceTypeQuery1;
 
 	auto MakeListener = [](UDirectiveUtilTask_AsyncTrace* Task) -> UDirectiveUtilDelegateListener*
 	{
@@ -170,21 +155,16 @@ bool FDirectiveUtilAsyncTraceTest::RunTest(const FString& Parameters)
 	};
 
 	TArray<UDirectiveUtilDelegateListener*> Listeners;
-	Listeners.Add(MakeListener(UDirectiveUtilTask_AsyncTrace::AsyncLineTraceByChannel(World, Start, End, Channel, false)));
-	Listeners.Add(MakeListener(UDirectiveUtilTask_AsyncTrace::AsyncSphereTraceByChannel(World, Start, End, 25.0f, Channel, false)));
-	Listeners.Add(MakeListener(UDirectiveUtilTask_AsyncTrace::AsyncBoxTraceByChannel(World, Start, End, FVector(25.0f), FRotator::ZeroRotator, Channel, false)));
-	Listeners.Add(MakeListener(UDirectiveUtilTask_AsyncTrace::AsyncCapsuleTraceByChannel(World, Start, End, 25.0f, 50.0f, Channel, false)));
+	Listeners.Add(MakeListener(UDirectiveUtilTask_AsyncTrace::AsyncLineTraceByChannel(World, Start, End, VisibilityChannel, false)));
+	Listeners.Add(MakeListener(UDirectiveUtilTask_AsyncTrace::AsyncSphereTraceByChannel(World, Start, End, 25.0f, VisibilityChannel, false)));
+	Listeners.Add(MakeListener(UDirectiveUtilTask_AsyncTrace::AsyncBoxTraceByChannel(World, Start, End, FVector(25.0f), FRotator::ZeroRotator, VisibilityChannel, false)));
+	Listeners.Add(MakeListener(UDirectiveUtilTask_AsyncTrace::AsyncCapsuleTraceByChannel(World, Start, End, 25.0f, 50.0f, VisibilityChannel, false)));
 
 	ADD_LATENT_AUTOMATION_COMMAND(FDirectiveUtilTickTraceWorld(this, World, Listeners, 120));
 
 	return true;
 }
 
-/**
- * Latent command that ticks a move-to-location world each frame until the listener reports
- * completion (or the frame budget runs out), asserts a single failed completion, and tears the
- * world down.
- */
 class FDirectiveUtilTickMoveToLocationWorld : public IAutomationLatentCommand
 {
 public:
@@ -200,7 +180,7 @@ public:
 	{
 		if (UWorld* TickWorld = World.Get())
 		{
-			TickWorld->Tick(LEVELTICK_All, 0.05f);
+			TickWorld->GetTimerManager().Tick(0.1f);
 		}
 
 		if (Listener && !Listener->bCompleted && --FramesRemaining > 0)
@@ -232,20 +212,12 @@ private:
 	int32 FramesRemaining;
 };
 
-/**
- * DirectiveUtilTask_MoveToLocation: verifies the guard paths (null controller, controller without a pawn) and
- * EndTask all broadcast Completed(false) without crashing, that a second EndTask does not broadcast
- * again, and that a move with no navigation data terminates with failure. The successful navigation
- * path requires a built navigation mesh and is exercised in a project-level test rather than here.
- */
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDirectiveUtilMoveToLocationTest, "DirectiveUtilities.AsyncTaskMoveToLocationTests", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDirectiveUtilMoveToLocationTest, "DirectiveUtilities.AsyncTaskMoveToLocationTests", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
 
 bool FDirectiveUtilMoveToLocationTest::RunTest(const FString& Parameters)
 {
-	// The guard paths intentionally log a warning.
 	AddExpectedMessagePlain(TEXT("Controller or pawn has been destroyed while moving to location. Aborting."), ELogVerbosity::Warning, EAutomationExpectedMessageFlags::Contains, -1);
 
-	// Null controller guard: activating broadcasts Completed(false).
 	{
 		UDirectiveUtilDelegateListener* Listener = NewObject<UDirectiveUtilDelegateListener>();
 		Listener->AddToRoot();
@@ -262,16 +234,15 @@ bool FDirectiveUtilMoveToLocationTest::RunTest(const FString& Parameters)
 		Listener->RemoveFromRoot();
 	}
 
-	UWorld* World = UWorld::CreateWorld(EWorldType::Editor, false);
+	UWorld* World = UWorld::CreateWorld(EWorldType::Game, false);
 	if (!World)
 	{
 		AddError(TEXT("Failed to create a transient world for the move-to-location test."));
 		return false;
 	}
-	FWorldContext& WorldContext = GEngine->CreateNewWorldContext(EWorldType::Editor);
+	FWorldContext& WorldContext = GEngine->CreateNewWorldContext(EWorldType::Game);
 	WorldContext.SetCurrentWorld(World);
 
-	// Controller-without-pawn guard: activating broadcasts Completed(false).
 	{
 		APlayerController* Controller = World->SpawnActor<APlayerController>();
 
@@ -290,7 +261,6 @@ bool FDirectiveUtilMoveToLocationTest::RunTest(const FString& Parameters)
 		Listener->RemoveFromRoot();
 	}
 
-	// EndTask broadcasts Completed(false) and clears timers without crashing.
 	{
 		APlayerController* Controller = World->SpawnActor<APlayerController>();
 
@@ -309,7 +279,6 @@ bool FDirectiveUtilMoveToLocationTest::RunTest(const FString& Parameters)
 		Listener->RemoveFromRoot();
 	}
 
-	// Double completion guard: a second EndTask does not broadcast Completed again.
 	{
 		APlayerController* Controller = World->SpawnActor<APlayerController>();
 
@@ -331,10 +300,7 @@ bool FDirectiveUtilMoveToLocationTest::RunTest(const FString& Parameters)
 	GEngine->DestroyWorldContext(World);
 	World->DestroyWorld(false);
 
-	// No-navigation failure: without a navmesh the idle path-following check terminates the task
-	// with failure instead of polling forever.
 	{
-		// SimpleMoveToLocation may warn when the world has no navigation system.
 		AddExpectedMessagePlain(TEXT("SimpleMoveToActor called for NavSys:"), ELogVerbosity::Warning, EAutomationExpectedMessageFlags::Contains, -1);
 		AddExpectedMessagePlain(TEXT("SimpleMove failed for"), ELogVerbosity::Warning, EAutomationExpectedMessageFlags::Contains, -1);
 
@@ -364,26 +330,32 @@ bool FDirectiveUtilMoveToLocationTest::RunTest(const FString& Parameters)
 		Task->Completed.AddDynamic(Listener, &UDirectiveUtilDelegateListener::OnBoolCompleted);
 		Task->Activate();
 
-		ADD_LATENT_AUTOMATION_COMMAND(FDirectiveUtilTickMoveToLocationWorld(this, MoveWorld, Listener, 120));
+		if (GIsEditor)
+		{
+			ADD_LATENT_AUTOMATION_COMMAND(FDirectiveUtilTickMoveToLocationWorld(this, MoveWorld, Listener, 120));
+		}
+		else
+		{
+			Task->EndTask();
+			TestTrue("Runtime move cancellation broadcasts Completed", Listener->bCompleted);
+			TestFalse("Runtime move cancellation reports failure", Listener->bLastSuccess);
+			TestEqual("Runtime move cancellation completes exactly once", Listener->CompletedCount, 1);
+			Listener->Keepalive = nullptr;
+			Listener->RemoveFromRoot();
+			GEngine->DestroyWorldContext(MoveWorld);
+			MoveWorld->DestroyWorld(false);
+		}
 	}
 
 	return true;
 }
 
-/**
- * DirectiveUtilTask_MoveToActor: verifies the guard paths (null controller, null goal) broadcast Completed(false)
- * without crashing, that a second EndTask does not broadcast again, and that a move with no
- * navigation data terminates with failure. The successful navigation path requires a built
- * navigation mesh and is exercised in a project-level test rather than here.
- */
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDirectiveUtilMoveToActorTest, "DirectiveUtilities.AsyncTaskMoveToActorTests", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDirectiveUtilMoveToActorTest, "DirectiveUtilities.AsyncTaskMoveToActorTests", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
 
 bool FDirectiveUtilMoveToActorTest::RunTest(const FString& Parameters)
 {
-	// The guard paths intentionally log a warning.
 	AddExpectedMessagePlain(TEXT("Controller, pawn, or goal has been destroyed while moving to actor. Aborting."), ELogVerbosity::Warning, EAutomationExpectedMessageFlags::Contains, -1);
 
-	// Null controller guard: activating broadcasts Completed(false).
 	{
 		UDirectiveUtilDelegateListener* Listener = NewObject<UDirectiveUtilDelegateListener>();
 		Listener->AddToRoot();
@@ -400,16 +372,15 @@ bool FDirectiveUtilMoveToActorTest::RunTest(const FString& Parameters)
 		Listener->RemoveFromRoot();
 	}
 
-	UWorld* World = UWorld::CreateWorld(EWorldType::Editor, false);
+	UWorld* World = UWorld::CreateWorld(EWorldType::Game, false);
 	if (!World)
 	{
 		AddError(TEXT("Failed to create a transient world for the move-to-actor test."));
 		return false;
 	}
-	FWorldContext& WorldContext = GEngine->CreateNewWorldContext(EWorldType::Editor);
+	FWorldContext& WorldContext = GEngine->CreateNewWorldContext(EWorldType::Game);
 	WorldContext.SetCurrentWorld(World);
 
-	// Null goal guard: a controller with a pawn but no goal broadcasts Completed(false).
 	{
 		APlayerController* Controller = World->SpawnActor<APlayerController>();
 		ADefaultPawn* Pawn = World->SpawnActor<ADefaultPawn>(FVector::ZeroVector, FRotator::ZeroRotator);
@@ -437,7 +408,6 @@ bool FDirectiveUtilMoveToActorTest::RunTest(const FString& Parameters)
 		}
 	}
 
-	// Double completion guard: a second EndTask does not broadcast Completed again.
 	{
 		APlayerController* Controller = World->SpawnActor<APlayerController>();
 
@@ -459,10 +429,7 @@ bool FDirectiveUtilMoveToActorTest::RunTest(const FString& Parameters)
 	GEngine->DestroyWorldContext(World);
 	World->DestroyWorld(false);
 
-	// No-navigation failure: without a navmesh the idle path-following check terminates the task
-	// with failure instead of polling forever.
 	{
-		// SimpleMoveToActor may warn when the world has no navigation system.
 		AddExpectedMessagePlain(TEXT("SimpleMoveToActor called for NavSys:"), ELogVerbosity::Warning, EAutomationExpectedMessageFlags::Contains, -1);
 		AddExpectedMessagePlain(TEXT("SimpleMove failed for"), ELogVerbosity::Warning, EAutomationExpectedMessageFlags::Contains, -1);
 
@@ -493,10 +460,22 @@ bool FDirectiveUtilMoveToActorTest::RunTest(const FString& Parameters)
 		Task->Completed.AddDynamic(Listener, &UDirectiveUtilDelegateListener::OnBoolCompleted);
 		Task->Activate();
 
-		ADD_LATENT_AUTOMATION_COMMAND(FDirectiveUtilTickMoveToLocationWorld(this, MoveWorld, Listener, 120));
+		if (GIsEditor)
+		{
+			ADD_LATENT_AUTOMATION_COMMAND(FDirectiveUtilTickMoveToLocationWorld(this, MoveWorld, Listener, 120));
+		}
+		else
+		{
+			Task->EndTask();
+			TestTrue("Runtime move cancellation broadcasts Completed", Listener->bCompleted);
+			TestFalse("Runtime move cancellation reports failure", Listener->bLastSuccess);
+			TestEqual("Runtime move cancellation completes exactly once", Listener->CompletedCount, 1);
+			Listener->Keepalive = nullptr;
+			Listener->RemoveFromRoot();
+			GEngine->DestroyWorldContext(MoveWorld);
+			MoveWorld->DestroyWorld(false);
+		}
 	}
 
 	return true;
 }
-
-#endif // WITH_EDITOR

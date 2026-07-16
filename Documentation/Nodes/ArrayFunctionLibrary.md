@@ -263,3 +263,97 @@ Returns the most frequently occurring element of the array (ties resolve to the 
 | OutCount | `int32` | [out] The number of times the most common element occurs. |
 
 **Returns:** True if the array was non-empty.
+
+## Sample Array
+**Type:** Blueprint Callable &nbsp;|&nbsp; **Category:** `Directive Utilities|Array`
+
+```cpp
+static void Array_Sample(
+    const TArray<int32>& TargetArray,
+    int32 Count,
+    bool bWithReplacement,
+    TArray<int32>& OutArray);
+```
+
+Returns random elements from a wildcard array. Without replacement, `Count` is limited to the source length and each source index can be selected once. With replacement, the output contains `Count` elements and values may repeat. An empty source or a non-positive count returns an empty output.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| TargetArray | `Wildcard Array` | The array to sample. |
+| Count | `int32` | The requested output size. |
+| bWithReplacement | `bool` | Allows the same source index to be selected more than once. |
+| OutArray | `Wildcard Array` | The sampled values. |
+
+## Sample Array From Stream
+**Type:** Blueprint Callable &nbsp;|&nbsp; **Category:** `Directive Utilities|Array`
+
+```cpp
+static void Array_SampleFromStream(
+    const TArray<int32>& TargetArray,
+    int32 Count,
+    bool bWithReplacement,
+    FRandomStream& RandomStream,
+    TArray<int32>& OutArray);
+```
+
+Uses the same rules as `Sample Array`, but reads from a random stream. Streams created with the same seed and state produce the same sample.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| TargetArray | `Wildcard Array` | The array to sample. |
+| Count | `int32` | The requested output size. |
+| bWithReplacement | `bool` | Allows the same source index to be selected more than once. |
+| RandomStream | `FRandomStream` | The stream used for selection. Its state advances. |
+| OutArray | `Wildcard Array` | The sampled values. |
+
+## Get Array Page
+**Type:** Blueprint Pure &nbsp;|&nbsp; **Category:** `Directive Utilities|Array`
+
+```cpp
+static bool Array_GetPage(
+    const TArray<int32>& TargetArray,
+    int32 PageIndex,
+    int32 PageSize,
+    TArray<int32>& OutArray,
+    int32& OutPageCount);
+```
+
+Returns one zero-based page from a wildcard array. A negative page index, non-positive page size, or page index outside the available pages returns false and an empty output. An empty source has zero pages.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| TargetArray | `Wildcard Array` | The array to read. |
+| PageIndex | `int32` | The zero-based page index. |
+| PageSize | `int32` | The maximum elements per page. |
+| OutArray | `Wildcard Array` | The requested page. |
+| OutPageCount | `int32` | The total page count. |
+
+**Returns:** True when the requested page exists.
+
+## Natural Sort String Array
+**Type:** Blueprint Callable &nbsp;|&nbsp; **Category:** `Directive Utilities|Array`
+
+```cpp
+static void NaturalSortStringArray(TArray<FString>& TargetArray, bool bDescending = false);
+```
+
+Sorts strings in place and compares embedded numbers by value. For example, `Item2` sorts before `Item10`. Equal values keep their original order.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| TargetArray | `TArray<FString>` | The array to sort. |
+| bDescending | `bool` | Reverses the sort direction. |
+
+## Natural Sort Name Array
+**Type:** Blueprint Callable &nbsp;|&nbsp; **Category:** `Directive Utilities|Array`
+
+```cpp
+static void NaturalSortNameArray(TArray<FName>& TargetArray, bool bDescending = false);
+```
+
+Sorts names in place using the same ordering as `Natural Sort String Array`.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| TargetArray | `TArray<FName>` | The array to sort. |
+| bDescending | `bool` | Reverses the sort direction. |
