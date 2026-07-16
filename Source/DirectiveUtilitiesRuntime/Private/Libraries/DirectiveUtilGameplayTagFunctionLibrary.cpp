@@ -27,13 +27,26 @@ FGameplayTagContainer UDirectiveUtilGameplayTagFunctionLibrary::GetTagParents(co
 
 int32 UDirectiveUtilGameplayTagFunctionLibrary::GetTagDepth(const FGameplayTag& Tag)
 {
-	return GetTagSegments(Tag).Num();
+	int32 Depth = 0;
+	for (FGameplayTag Current = Tag; Current.IsValid(); Current = Current.RequestDirectParent())
+	{
+		++Depth;
+	}
+	return Depth;
 }
 
 FString UDirectiveUtilGameplayTagFunctionLibrary::GetTagLeafName(const FGameplayTag& Tag)
 {
-	const TArray<FString> Segments = GetTagSegments(Tag);
-	return Segments.Num() > 0 ? Segments.Last() : FString();
+	if (!Tag.IsValid())
+	{
+		return FString();
+	}
+
+	const FString TagString = Tag.GetTagName().ToString();
+	int32 SeparatorIndex = INDEX_NONE;
+	return TagString.FindLastChar(TEXT('.'), SeparatorIndex)
+		? TagString.Mid(SeparatorIndex + 1)
+		: TagString;
 }
 
 TArray<FString> UDirectiveUtilGameplayTagFunctionLibrary::GetTagSegments(const FGameplayTag& Tag)
@@ -64,10 +77,9 @@ FGameplayTagContainer UDirectiveUtilGameplayTagFunctionLibrary::GetTagDirectChil
 		return DirectChildren;
 	}
 
-	const int32 DirectChildDepth = GetTagDepth(Tag) + 1;
 	for (const FGameplayTag& Child : GetTagChildren(Tag))
 	{
-		if (GetTagDepth(Child) == DirectChildDepth)
+		if (Child.RequestDirectParent() == Tag)
 		{
 			DirectChildren.AddTag(Child);
 		}
@@ -77,29 +89,31 @@ FGameplayTagContainer UDirectiveUtilGameplayTagFunctionLibrary::GetTagDirectChil
 
 FGameplayTag UDirectiveUtilGameplayTagFunctionLibrary::GetTagCommonAncestor(const FGameplayTag& TagA, const FGameplayTag& TagB)
 {
-	const TArray<FString> SegmentsA = GetTagSegments(TagA);
-	const TArray<FString> SegmentsB = GetTagSegments(TagB);
-
-	FString Prefix;
-	for (int32 Index = 0; Index < SegmentsA.Num() && Index < SegmentsB.Num(); ++Index)
-	{
-		if (!SegmentsA[Index].Equals(SegmentsB[Index]))
-		{
-			break;
-		}
-		if (!Prefix.IsEmpty())
-		{
-			Prefix += TEXT(".");
-		}
-		Prefix += SegmentsA[Index];
-	}
-
-	if (Prefix.IsEmpty())
+	if (!TagA.IsValid() || !TagB.IsValid())
 	{
 		return FGameplayTag();
 	}
-	// A common prefix of two registered tags is itself registered (parents auto-register).
-	return FGameplayTag::RequestGameplayTag(FName(*Prefix), false);
+
+	FGameplayTag AncestorA = TagA;
+	FGameplayTag AncestorB = TagB;
+	int32 DepthA = GetTagDepth(AncestorA);
+	int32 DepthB = GetTagDepth(AncestorB);
+	while (DepthA > DepthB)
+	{
+		AncestorA = AncestorA.RequestDirectParent();
+		--DepthA;
+	}
+	while (DepthB > DepthA)
+	{
+		AncestorB = AncestorB.RequestDirectParent();
+		--DepthB;
+	}
+	while (AncestorA.IsValid() && AncestorB.IsValid() && AncestorA != AncestorB)
+	{
+		AncestorA = AncestorA.RequestDirectParent();
+		AncestorB = AncestorB.RequestDirectParent();
+	}
+	return AncestorA == AncestorB ? AncestorA : FGameplayTag();
 }
 
 FGameplayTag UDirectiveUtilGameplayTagFunctionLibrary::GetTagAtDepth(const FGameplayTag& Tag, const int32 Depth)
@@ -109,20 +123,18 @@ FGameplayTag UDirectiveUtilGameplayTagFunctionLibrary::GetTagAtDepth(const FGame
 		return FGameplayTag();
 	}
 
-	const TArray<FString> Segments = GetTagSegments(Tag);
-	if (Depth >= Segments.Num())
+	const int32 TagDepth = GetTagDepth(Tag);
+	if (Depth >= TagDepth)
 	{
 		return Tag;
 	}
 
-	FString Prefix = Segments[0];
-	for (int32 Index = 1; Index < Depth; ++Index)
+	FGameplayTag Ancestor = Tag;
+	for (int32 CurrentDepth = TagDepth; CurrentDepth > Depth; --CurrentDepth)
 	{
-		Prefix += TEXT(".");
-		Prefix += Segments[Index];
+		Ancestor = Ancestor.RequestDirectParent();
 	}
-	// An ancestor of a registered tag is always registered itself (parents auto-register).
-	return FGameplayTag::RequestGameplayTag(FName(*Prefix), false);
+	return Ancestor;
 }
 
 FGameplayTagContainer UDirectiveUtilGameplayTagFunctionLibrary::GetTagSiblings(const FGameplayTag& Tag)

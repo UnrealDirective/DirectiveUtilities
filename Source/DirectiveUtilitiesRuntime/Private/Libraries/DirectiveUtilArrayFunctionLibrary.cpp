@@ -3,51 +3,140 @@
 
 #include "Libraries/DirectiveUtilArrayFunctionLibrary.h"
 
+#include "Algo/Sort.h"
 #include "Containers/ScriptArray.h"
+#include "Misc/ComparisonUtility.h"
 
 namespace
 {
-	class FArraySourceView
+	class FArrayResultBuilder
 	{
 	public:
-		FArraySourceView(const FArrayProperty* ArrayProperty, const void* SourceArray, const void* OutputArray)
-			: SourceData(SourceArray)
+		FArrayResultBuilder(const FArrayProperty* InArrayProperty, const int32 Count)
+			: ArrayProperty(InArrayProperty)
+			, ArrayHelper(InArrayProperty, &Array)
 		{
-			if (SourceArray != OutputArray)
-			{
-				return;
-			}
-
-			FScriptArrayHelper SourceHelper(ArrayProperty, SourceArray);
-			SnapshotHelper = MakeUnique<FScriptArrayHelper>(ArrayProperty, &Snapshot);
-			SnapshotHelper->AddValues(SourceHelper.Num());
-			for (int32 Index = 0; Index < SourceHelper.Num(); ++Index)
-			{
-				ArrayProperty->Inner->CopyCompleteValue(
-					SnapshotHelper->GetRawPtr(Index),
-					SourceHelper.GetRawPtr(Index));
-			}
-			SourceData = &Snapshot;
+			ArrayHelper.AddValues(Count);
 		}
 
-		~FArraySourceView()
+		~FArrayResultBuilder()
 		{
-			if (SnapshotHelper)
-			{
-				SnapshotHelper->EmptyValues();
-			}
+			ArrayHelper.EmptyValues();
 		}
 
-		const void* GetData() const
+		uint8* GetRawPtr(const int32 Index)
 		{
-			return SourceData;
+			return ArrayHelper.GetRawPtr(Index);
+		}
+
+		void MoveTo(void* OutArray)
+		{
+			FScriptArrayHelper OutHelper(ArrayProperty, OutArray);
+			OutHelper.MoveAssign(&Array);
 		}
 
 	private:
-		FScriptArray Snapshot;
-		TUniquePtr<FScriptArrayHelper> SnapshotHelper;
-		const void* SourceData;
+		FScriptArray Array;
+		const FArrayProperty* ArrayProperty;
+		FScriptArrayHelper ArrayHelper;
 	};
+
+	struct FPropertyValueKey
+	{
+		const FProperty* Property;
+		const void* Value;
+		uint32 Hash;
+
+		friend uint32 GetTypeHash(const FPropertyValueKey& Key)
+		{
+			return Key.Hash;
+		}
+
+		friend bool operator==(const FPropertyValueKey& Left, const FPropertyValueKey& Right)
+		{
+			return Left.Property == Right.Property && Left.Property->Identical(Left.Value, Right.Value);
+		}
+	};
+
+	struct FValueGroup
+	{
+		int32 SourceIndex;
+		int32 Count;
+	};
+
+	bool HaveMatchingElementTypes(const FArrayProperty* SourceProperty, const FArrayProperty* OutProperty)
+	{
+		return SourceProperty && OutProperty && SourceProperty->Inner->SameType(OutProperty->Inner);
+	}
+
+	void BuildValueGroups(
+		FScriptArrayHelper& SourceHelper,
+		const FProperty* InnerProperty,
+		TArray<FValueGroup>& OutGroups)
+	{
+		const int32 Num = SourceHelper.Num();
+		OutGroups.Reset(Num);
+		if (InnerProperty->HasAllPropertyFlags(CPF_HasGetValueTypeHash))
+		{
+			TMap<FPropertyValueKey, int32> GroupIndices;
+			GroupIndices.Reserve(Num);
+			for (int32 SourceIndex = 0; SourceIndex < Num; ++SourceIndex)
+			{
+				const void* Value = SourceHelper.GetRawPtr(SourceIndex);
+				const FPropertyValueKey Key{InnerProperty, Value, InnerProperty->GetValueTypeHash(Value)};
+				if (const int32* GroupIndex = GroupIndices.Find(Key))
+				{
+					++OutGroups[*GroupIndex].Count;
+					continue;
+				}
+
+				const int32 GroupIndex = OutGroups.Num();
+				OutGroups.Add({SourceIndex, 1});
+				GroupIndices.Add(Key, GroupIndex);
+			}
+			return;
+		}
+
+		for (int32 SourceIndex = 0; SourceIndex < Num; ++SourceIndex)
+		{
+			const void* Value = SourceHelper.GetRawPtr(SourceIndex);
+			int32 GroupIndex = INDEX_NONE;
+			for (int32 CandidateIndex = 0; CandidateIndex < OutGroups.Num(); ++CandidateIndex)
+			{
+				if (InnerProperty->Identical(Value, SourceHelper.GetRawPtr(OutGroups[CandidateIndex].SourceIndex)))
+				{
+					GroupIndex = CandidateIndex;
+					break;
+				}
+			}
+
+			if (GroupIndex == INDEX_NONE)
+			{
+				OutGroups.Add({SourceIndex, 1});
+			}
+			else
+			{
+				++OutGroups[GroupIndex].Count;
+			}
+		}
+	}
+
+	void CopyValues(
+		FScriptArrayHelper& SourceHelper,
+		const FProperty* SourceProperty,
+		const TArray<int32>& SourceIndices,
+		void* OutArray,
+		const FArrayProperty* OutArrayProperty)
+	{
+		FArrayResultBuilder Result(OutArrayProperty, SourceIndices.Num());
+		for (int32 OutIndex = 0; OutIndex < SourceIndices.Num(); ++OutIndex)
+		{
+			SourceProperty->CopySingleValueToScriptVM(
+				Result.GetRawPtr(OutIndex),
+				SourceHelper.GetRawPtr(SourceIndices[OutIndex]));
+		}
+		Result.MoveTo(OutArray);
+	}
 }
 
 int32 UDirectiveUtilArrayFunctionLibrary::Array_NextIndex(const TArray<int32>& TargetArray, const int32 Index, const bool bLoop)
@@ -116,18 +205,25 @@ void UDirectiveUtilArrayFunctionLibrary::GenericArray_RemoveDuplicates(
 
 	FScriptArrayHelper ArrayHelper(ArrayProperty, TargetArray);
 	const FProperty* InnerProp = ArrayProperty->Inner;
-
-	for (int32 OuterIndex = ArrayHelper.Num() - 1; OuterIndex > 0; --OuterIndex)
+	if (ArrayHelper.Num() <= 1)
 	{
-		for (int32 InnerIndex = 0; InnerIndex < OuterIndex; ++InnerIndex)
-		{
-			if (InnerProp->Identical(ArrayHelper.GetElementPtr(OuterIndex), ArrayHelper.GetElementPtr(InnerIndex)))
-			{
-				ArrayHelper.RemoveValues(OuterIndex);
-				break;
-			}
-		}
+		return;
 	}
+
+	TArray<FValueGroup> Groups;
+	BuildValueGroups(ArrayHelper, InnerProp, Groups);
+	if (Groups.Num() == ArrayHelper.Num())
+	{
+		return;
+	}
+
+	TArray<int32> SourceIndices;
+	SourceIndices.Reserve(Groups.Num());
+	for (const FValueGroup& Group : Groups)
+	{
+		SourceIndices.Add(Group.SourceIndex);
+	}
+	CopyValues(ArrayHelper, InnerProp, SourceIndices, TargetArray, ArrayProperty);
 }
 
 int32 UDirectiveUtilArrayFunctionLibrary::GenericArray_PreviousIndex(
@@ -420,31 +516,29 @@ void UDirectiveUtilArrayFunctionLibrary::GenericArray_Slice(
 	void* OutArray,
 	const FArrayProperty* OutArrayProperty)
 {
-	if (!TargetArray || !OutArray || !TargetArrayProperty || !OutArrayProperty
-		|| !TargetArrayProperty->Inner->SameType(OutArrayProperty->Inner))
+	if (!TargetArray || !OutArray || !HaveMatchingElementTypes(TargetArrayProperty, OutArrayProperty))
 	{
 		return;
 	}
 
-	const FArraySourceView SourceView(TargetArrayProperty, TargetArray, OutArray);
-	FScriptArrayHelper SourceHelper(TargetArrayProperty, SourceView.GetData());
-	FScriptArrayHelper OutHelper(OutArrayProperty, OutArray);
-	OutHelper.EmptyValues();
-
+	FScriptArrayHelper SourceHelper(TargetArrayProperty, TargetArray);
 	const int32 Num = SourceHelper.Num();
 	if (Num == 0 || Count <= 0)
 	{
+		FArrayResultBuilder EmptyResult(OutArrayProperty, 0);
+		EmptyResult.MoveTo(OutArray);
 		return;
 	}
 
 	const FProperty* InnerProp = TargetArrayProperty->Inner;
 	const int32 Start = FMath::Clamp(StartIndex, 0, Num);
 	const int32 NumToCopy = FMath::Min(Count, Num - Start);
+	FArrayResultBuilder Result(OutArrayProperty, NumToCopy);
 	for (int32 Offset = 0; Offset < NumToCopy; ++Offset)
 	{
-		const int32 OutIndex = OutHelper.AddValue();
-		InnerProp->CopySingleValueToScriptVM(OutHelper.GetRawPtr(OutIndex), SourceHelper.GetRawPtr(Start + Offset));
+		InnerProp->CopySingleValueToScriptVM(Result.GetRawPtr(Offset), SourceHelper.GetRawPtr(Start + Offset));
 	}
+	Result.MoveTo(OutArray);
 }
 
 void UDirectiveUtilArrayFunctionLibrary::GenericArray_Rotate(
@@ -474,6 +568,30 @@ void UDirectiveUtilArrayFunctionLibrary::GenericArray_Rotate(
 		return;
 	}
 
+	const FProperty* InnerProperty = ArrayProperty->Inner;
+	if (InnerProperty->HasAllPropertyFlags(CPF_IsPlainOldData))
+	{
+		const int32 ElementSize = InnerProperty->GetElementSize();
+		const int32 LeftCount = Num - Normalized;
+		const int32 ScratchCount = FMath::Min(LeftCount, Normalized);
+		TArray<uint8> Scratch;
+		Scratch.SetNumUninitialized(ScratchCount * ElementSize);
+		uint8* Data = ArrayHelper.GetRawPtr(0);
+		if (Normalized <= LeftCount)
+		{
+			FMemory::Memcpy(Scratch.GetData(), Data + LeftCount * ElementSize, Scratch.Num());
+			FMemory::Memmove(Data + Normalized * ElementSize, Data, LeftCount * ElementSize);
+			FMemory::Memcpy(Data, Scratch.GetData(), Scratch.Num());
+		}
+		else
+		{
+			FMemory::Memcpy(Scratch.GetData(), Data, Scratch.Num());
+			FMemory::Memmove(Data, Data + LeftCount * ElementSize, Normalized * ElementSize);
+			FMemory::Memcpy(Data + Normalized * ElementSize, Scratch.GetData(), Scratch.Num());
+		}
+		return;
+	}
+
 	auto ReverseRange = [&ArrayHelper](int32 Low, int32 High)
 	{
 		while (Low < High)
@@ -494,39 +612,23 @@ void UDirectiveUtilArrayFunctionLibrary::GenericArray_GetDistinct(
 	void* OutArray,
 	const FArrayProperty* OutArrayProperty)
 {
-	if (!TargetArray || !OutArray || !TargetArrayProperty || !OutArrayProperty
-		|| !TargetArrayProperty->Inner->SameType(OutArrayProperty->Inner))
+	if (!TargetArray || !OutArray || !HaveMatchingElementTypes(TargetArrayProperty, OutArrayProperty))
 	{
 		return;
 	}
 
-	const FArraySourceView SourceView(TargetArrayProperty, TargetArray, OutArray);
-	FScriptArrayHelper SourceHelper(TargetArrayProperty, SourceView.GetData());
-	FScriptArrayHelper OutHelper(OutArrayProperty, OutArray);
-	OutHelper.EmptyValues();
-
+	FScriptArrayHelper SourceHelper(TargetArrayProperty, TargetArray);
 	const FProperty* InnerProp = TargetArrayProperty->Inner;
-	const int32 Num = SourceHelper.Num();
-	for (int32 SourceIndex = 0; SourceIndex < Num; ++SourceIndex)
+	TArray<FValueGroup> Groups;
+	BuildValueGroups(SourceHelper, InnerProp, Groups);
+
+	TArray<int32> SourceIndices;
+	SourceIndices.Reserve(Groups.Num());
+	for (const FValueGroup& Group : Groups)
 	{
-		const uint8* SourceElement = SourceHelper.GetRawPtr(SourceIndex);
-
-		bool bIsDuplicate = false;
-		for (int32 ExistingIndex = 0; ExistingIndex < OutHelper.Num(); ++ExistingIndex)
-		{
-			if (InnerProp->Identical(SourceElement, OutHelper.GetRawPtr(ExistingIndex)))
-			{
-				bIsDuplicate = true;
-				break;
-			}
-		}
-
-		if (!bIsDuplicate)
-		{
-			const int32 OutIndex = OutHelper.AddValue();
-			InnerProp->CopySingleValueToScriptVM(OutHelper.GetRawPtr(OutIndex), SourceElement);
-		}
+		SourceIndices.Add(Group.SourceIndex);
 	}
+	CopyValues(SourceHelper, InnerProp, SourceIndices, OutArray, OutArrayProperty);
 }
 
 int32 UDirectiveUtilArrayFunctionLibrary::GenericArray_CountOccurrences(
@@ -581,32 +683,271 @@ bool UDirectiveUtilArrayFunctionLibrary::GenericArray_GetMostCommon(
 		return false;
 	}
 
-	int32 BestIndex = 0;
-	int32 BestCount = 0;
-	for (int32 Index = 0; Index < Num; ++Index)
+	TArray<FValueGroup> Groups;
+	BuildValueGroups(ArrayHelper, InnerProp, Groups);
+	int32 BestGroupIndex = 0;
+	for (int32 GroupIndex = 1; GroupIndex < Groups.Num(); ++GroupIndex)
 	{
-		int32 CurrentCount = 0;
-		for (int32 CompareIndex = 0; CompareIndex < Num; ++CompareIndex)
+		if (Groups[GroupIndex].Count > Groups[BestGroupIndex].Count)
 		{
-			if (InnerProp->Identical(ArrayHelper.GetRawPtr(Index), ArrayHelper.GetRawPtr(CompareIndex)))
-			{
-				++CurrentCount;
-			}
-		}
-		if (CurrentCount > BestCount)
-		{
-			BestCount = CurrentCount;
-			BestIndex = Index;
+			BestGroupIndex = GroupIndex;
 		}
 	}
 
+	const FValueGroup& BestGroup = Groups[BestGroupIndex];
 	if (OutItemPtr)
 	{
-		InnerProp->CopyCompleteValueFromScriptVM(OutItemPtr, ArrayHelper.GetRawPtr(BestIndex));
+		InnerProp->CopyCompleteValueFromScriptVM(OutItemPtr, ArrayHelper.GetRawPtr(BestGroup.SourceIndex));
 	}
 	if (OutCount)
 	{
-		*OutCount = BestCount;
+		*OutCount = BestGroup.Count;
 	}
 	return true;
+}
+
+void UDirectiveUtilArrayFunctionLibrary::Array_Sample(
+	const TArray<int32>& TargetArray,
+	const int32 Count,
+	const bool bWithReplacement,
+	TArray<int32>& OutArray)
+{
+	checkNoEntry();
+}
+
+void UDirectiveUtilArrayFunctionLibrary::Array_SampleFromStream(
+	const TArray<int32>& TargetArray,
+	const int32 Count,
+	const bool bWithReplacement,
+	FRandomStream& RandomStream,
+	TArray<int32>& OutArray)
+{
+	checkNoEntry();
+}
+
+void UDirectiveUtilArrayFunctionLibrary::GenericArray_Sample(
+	const void* TargetArray,
+	const FArrayProperty* TargetArrayProperty,
+	const int32 Count,
+	const bool bWithReplacement,
+	FRandomStream* RandomStream,
+	void* OutArray,
+	const FArrayProperty* OutArrayProperty)
+{
+	if (!TargetArray || !OutArray || !HaveMatchingElementTypes(TargetArrayProperty, OutArrayProperty))
+	{
+		return;
+	}
+
+	FScriptArrayHelper SourceHelper(TargetArrayProperty, TargetArray);
+	const int32 SourceCount = SourceHelper.Num();
+	if (Count <= 0 || SourceCount == 0)
+	{
+		FArrayResultBuilder EmptyResult(OutArrayProperty, 0);
+		EmptyResult.MoveTo(OutArray);
+		return;
+	}
+
+	const int32 SampleCount = bWithReplacement ? Count : FMath::Min(Count, SourceCount);
+	FArrayResultBuilder Result(OutArrayProperty, SampleCount);
+	const FProperty* InnerProperty = TargetArrayProperty->Inner;
+	auto CopySourceElement = [&](const int32 OutIndex, const int32 SourceIndex)
+	{
+		InnerProperty->CopySingleValueToScriptVM(Result.GetRawPtr(OutIndex), SourceHelper.GetRawPtr(SourceIndex));
+	};
+	auto RandomIndex = [RandomStream](const int32 MaxIndex)
+	{
+		return RandomStream ? RandomStream->RandRange(0, MaxIndex) : FMath::RandRange(0, MaxIndex);
+	};
+
+	if (bWithReplacement)
+	{
+		for (int32 SampleIndex = 0; SampleIndex < Count; ++SampleIndex)
+		{
+			CopySourceElement(SampleIndex, RandomIndex(SourceCount - 1));
+		}
+		Result.MoveTo(OutArray);
+		return;
+	}
+
+	if (SampleCount <= SourceCount / 4)
+	{
+		TMap<int32, int32> RemappedIndices;
+		RemappedIndices.Reserve(SampleCount);
+		auto ResolveIndex = [&RemappedIndices](const int32 Position)
+		{
+			if (const int32* RemappedIndex = RemappedIndices.Find(Position))
+			{
+				return *RemappedIndex;
+			}
+			return Position;
+		};
+
+		for (int32 SampleIndex = 0; SampleIndex < SampleCount; ++SampleIndex)
+		{
+			const int32 LastPosition = SourceCount - SampleIndex - 1;
+			const int32 SelectedPosition = RandomIndex(LastPosition);
+			const int32 SelectedSourceIndex = ResolveIndex(SelectedPosition);
+			if (SelectedPosition != LastPosition)
+			{
+				const int32 LastSourceIndex = ResolveIndex(LastPosition);
+				if (LastSourceIndex == SelectedPosition)
+				{
+					RemappedIndices.Remove(SelectedPosition);
+				}
+				else
+				{
+					RemappedIndices.Add(SelectedPosition, LastSourceIndex);
+				}
+			}
+			RemappedIndices.Remove(LastPosition);
+			CopySourceElement(SampleIndex, SelectedSourceIndex);
+		}
+		Result.MoveTo(OutArray);
+		return;
+	}
+
+	TArray<int32> AvailableIndices;
+	AvailableIndices.SetNumUninitialized(SourceCount);
+	for (int32 Index = 0; Index < SourceCount; ++Index)
+	{
+		AvailableIndices[Index] = Index;
+	}
+
+	for (int32 SampleIndex = 0; SampleIndex < SampleCount; ++SampleIndex)
+	{
+		const int32 SelectedIndex = RandomIndex(AvailableIndices.Num() - 1);
+		CopySourceElement(SampleIndex, AvailableIndices[SelectedIndex]);
+		AvailableIndices.RemoveAtSwap(SelectedIndex, 1, EAllowShrinking::No);
+	}
+	Result.MoveTo(OutArray);
+}
+
+bool UDirectiveUtilArrayFunctionLibrary::Array_GetPage(
+	const TArray<int32>& TargetArray,
+	const int32 PageIndex,
+	const int32 PageSize,
+	TArray<int32>& OutArray,
+	int32& OutPageCount)
+{
+	checkNoEntry();
+	return false;
+}
+
+bool UDirectiveUtilArrayFunctionLibrary::GenericArray_GetPage(
+	const void* TargetArray,
+	const FArrayProperty* TargetArrayProperty,
+	const int32 PageIndex,
+	const int32 PageSize,
+	void* OutArray,
+	const FArrayProperty* OutArrayProperty,
+	int32* OutPageCount)
+{
+	if (OutPageCount)
+	{
+		*OutPageCount = 0;
+	}
+	if (!TargetArray || !OutArray || !HaveMatchingElementTypes(TargetArrayProperty, OutArrayProperty))
+	{
+		return false;
+	}
+
+	FScriptArrayHelper SourceHelper(TargetArrayProperty, TargetArray);
+	if (PageIndex < 0 || PageSize <= 0)
+	{
+		FArrayResultBuilder EmptyResult(OutArrayProperty, 0);
+		EmptyResult.MoveTo(OutArray);
+		return false;
+	}
+
+	const int32 PageCount = FMath::DivideAndRoundUp(SourceHelper.Num(), PageSize);
+	if (OutPageCount)
+	{
+		*OutPageCount = PageCount;
+	}
+	if (PageIndex >= PageCount)
+	{
+		FArrayResultBuilder EmptyResult(OutArrayProperty, 0);
+		EmptyResult.MoveTo(OutArray);
+		return false;
+	}
+
+	const int32 StartIndex = PageIndex * PageSize;
+	const int32 EndIndex = FMath::Min(StartIndex + PageSize, SourceHelper.Num());
+	const FProperty* InnerProperty = TargetArrayProperty->Inner;
+	FArrayResultBuilder Result(OutArrayProperty, EndIndex - StartIndex);
+	for (int32 SourceIndex = StartIndex; SourceIndex < EndIndex; ++SourceIndex)
+	{
+		InnerProperty->CopySingleValueToScriptVM(Result.GetRawPtr(SourceIndex - StartIndex), SourceHelper.GetRawPtr(SourceIndex));
+	}
+	Result.MoveTo(OutArray);
+	return true;
+}
+
+void UDirectiveUtilArrayFunctionLibrary::NaturalSortStringArray(TArray<FString>& TargetArray, const bool bDescending)
+{
+	struct FIndexedString
+	{
+		const FString* Value;
+		int32 OriginalIndex;
+	};
+
+	TArray<FIndexedString> IndexedStrings;
+	IndexedStrings.Reserve(TargetArray.Num());
+	for (int32 Index = 0; Index < TargetArray.Num(); ++Index)
+	{
+		IndexedStrings.Add({&TargetArray[Index], Index});
+	}
+
+	Algo::Sort(IndexedStrings, [bDescending](const FIndexedString& Left, const FIndexedString& Right)
+	{
+		const int32 Comparison = UE::ComparisonUtility::CompareNaturalOrder(*Left.Value, *Right.Value);
+		if (Comparison == 0)
+		{
+			return Left.OriginalIndex < Right.OriginalIndex;
+		}
+		return bDescending ? Comparison > 0 : Comparison < 0;
+	});
+
+	TArray<FString> SortedArray;
+	SortedArray.Reserve(TargetArray.Num());
+	for (const FIndexedString& IndexedString : IndexedStrings)
+	{
+		SortedArray.Add(MoveTemp(TargetArray[IndexedString.OriginalIndex]));
+	}
+	TargetArray = MoveTemp(SortedArray);
+}
+
+void UDirectiveUtilArrayFunctionLibrary::NaturalSortNameArray(TArray<FName>& TargetArray, const bool bDescending)
+{
+	struct FIndexedName
+	{
+		FString Value;
+		int32 OriginalIndex;
+	};
+
+	TArray<FIndexedName> IndexedNames;
+	IndexedNames.Reserve(TargetArray.Num());
+	for (int32 Index = 0; Index < TargetArray.Num(); ++Index)
+	{
+		IndexedNames.Add({TargetArray[Index].ToString(), Index});
+	}
+
+	Algo::Sort(IndexedNames, [bDescending](const FIndexedName& Left, const FIndexedName& Right)
+	{
+		const int32 Comparison = UE::ComparisonUtility::CompareNaturalOrder(Left.Value, Right.Value);
+		if (Comparison == 0)
+		{
+			return Left.OriginalIndex < Right.OriginalIndex;
+		}
+		return bDescending ? Comparison > 0 : Comparison < 0;
+	});
+
+	TArray<FName> SortedArray;
+	SortedArray.Reserve(TargetArray.Num());
+	for (const FIndexedName& IndexedName : IndexedNames)
+	{
+		SortedArray.Add(TargetArray[IndexedName.OriginalIndex]);
+	}
+	TargetArray = MoveTemp(SortedArray);
 }

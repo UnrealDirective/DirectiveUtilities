@@ -1,7 +1,35 @@
 #include "Libraries/DirectiveUtilStringFunctionLibrary.h"
 #include "Misc/AutomationTest.h"
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDirectiveUtilStringFunctionLibraryTest, "DirectiveUtilities.StringFunctionLibraryTests", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+namespace
+{
+    int32 ReferenceLevenshteinDistance(const FString& Left, const FString& Right)
+    {
+        TArray<int32> PreviousRow;
+        TArray<int32> CurrentRow;
+        PreviousRow.SetNumUninitialized(Right.Len() + 1);
+        CurrentRow.SetNumUninitialized(Right.Len() + 1);
+        for (int32 ColumnIndex = 0; ColumnIndex <= Right.Len(); ++ColumnIndex)
+        {
+            PreviousRow[ColumnIndex] = ColumnIndex;
+        }
+        for (int32 RowIndex = 1; RowIndex <= Left.Len(); ++RowIndex)
+        {
+            CurrentRow[0] = RowIndex;
+            for (int32 ColumnIndex = 1; ColumnIndex <= Right.Len(); ++ColumnIndex)
+            {
+                CurrentRow[ColumnIndex] = FMath::Min3(
+                    PreviousRow[ColumnIndex] + 1,
+                    CurrentRow[ColumnIndex - 1] + 1,
+                    PreviousRow[ColumnIndex - 1] + (Left[RowIndex - 1] == Right[ColumnIndex - 1] ? 0 : 1));
+            }
+            Swap(PreviousRow, CurrentRow);
+        }
+        return PreviousRow.Last();
+    }
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDirectiveUtilStringFunctionLibraryTest, "DirectiveUtilities.StringFunctionLibraryTests", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
 
 bool FDirectiveUtilStringFunctionLibraryTest::RunTest(const FString& Parameters)
 {
@@ -273,6 +301,43 @@ bool FDirectiveUtilStringFunctionLibraryTest::RunTest(const FString& Parameters)
             UDirectiveUtilStringFunctionLibrary::FindBestStringMatch(TEXT(""), {TEXT("abc")}, Similarity), 0);
         TestTrue("FindBestStringMatch should report similarity 0 for an empty input against a non-empty candidate",
             FMath::IsNearlyEqual(Similarity, 0.0f, 1.e-4f));
+
+        TestEqual("FindBestStringMatch should keep the first equally close candidate",
+            UDirectiveUtilStringFunctionLibrary::FindBestStringMatch(TEXT("cat"), {TEXT("bat"), TEXT("hat")}, Similarity), 0);
+    }
+
+    TestEqual("Levenshtein should trim equal prefixes and suffixes without changing the result",
+        UDirectiveUtilStringFunctionLibrary::GetLevenshteinDistance(TEXT("shared-prefix-A-shared-suffix"), TEXT("shared-prefix-B-shared-suffix")), 1);
+    TestEqual("Levenshtein should support Unicode code units",
+        UDirectiveUtilStringFunctionLibrary::GetLevenshteinDistance(TEXT("café-one"), TEXT("café-two")), 3);
+
+    FRandomStream LevenshteinStream(90210);
+    for (int32 Iteration = 0; Iteration < 200; ++Iteration)
+    {
+        FString Left;
+        FString Right;
+        const int32 LeftLength = LevenshteinStream.RandRange(0, 64);
+        const int32 RightLength = LevenshteinStream.RandRange(0, 64);
+        Left.Reserve(LeftLength);
+        Right.Reserve(RightLength);
+        for (int32 Index = 0; Index < LeftLength; ++Index)
+        {
+            Left.AppendChar(static_cast<TCHAR>(TEXT('a') + LevenshteinStream.RandRange(0, 5)));
+        }
+        for (int32 Index = 0; Index < RightLength; ++Index)
+        {
+            Right.AppendChar(static_cast<TCHAR>(TEXT('a') + LevenshteinStream.RandRange(0, 5)));
+        }
+
+        const int32 ExpectedDistance = ReferenceLevenshteinDistance(Left, Right);
+        TestEqual(
+            FString::Printf(TEXT("Levenshtein fuzz case %d"), Iteration),
+            UDirectiveUtilStringFunctionLibrary::GetLevenshteinDistance(Left, Right),
+            ExpectedDistance);
+        TestEqual(
+            FString::Printf(TEXT("Levenshtein symmetry case %d"), Iteration),
+            UDirectiveUtilStringFunctionLibrary::GetLevenshteinDistance(Right, Left),
+            ExpectedDistance);
     }
 
     return true;

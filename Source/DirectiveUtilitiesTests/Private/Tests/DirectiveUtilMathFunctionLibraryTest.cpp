@@ -3,7 +3,7 @@
 
 #include <limits>
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDirectiveUtilMathFunctionLibraryTest, "DirectiveUtilities.MathFunctionLibraryTests", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDirectiveUtilMathFunctionLibraryTest, "DirectiveUtilities.MathFunctionLibraryTests", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
 
 bool FDirectiveUtilMathFunctionLibraryTest::RunTest(const FString& Parameters)
 {
@@ -239,6 +239,48 @@ bool FDirectiveUtilMathFunctionLibraryTest::RunTest(const FString& Parameters)
 			UDirectiveUtilMathFunctionLibrary::GetFloatArrayMedian(EmptyFloats), 0.0f);
 		TestEqual("GetFloatArrayStandardDeviation of an empty array is 0",
 			UDirectiveUtilMathFunctionLibrary::GetFloatArrayStandardDeviation(EmptyFloats), 0.0f);
+	}
+
+	TestTrue("GetIntArrayMedian should average the full int32 range without overflow",
+		FMath::IsNearlyEqual(UDirectiveUtilMathFunctionLibrary::GetIntArrayMedian({MIN_int32, MAX_int32}), -0.5f, 1.e-4f));
+	TestEqual("GetIntArrayMedian should handle repeated values",
+		UDirectiveUtilMathFunctionLibrary::GetIntArrayMedian({7, 7, 7, 7, 7}), 7.0f);
+	TestEqual("GetFloatArrayMedian should handle repeated values",
+		UDirectiveUtilMathFunctionLibrary::GetFloatArrayMedian({7.5f, 7.5f, 7.5f, 7.5f}), 7.5f);
+
+	FRandomStream MedianStream(481516);
+	for (int32 Iteration = 0; Iteration < 200; ++Iteration)
+	{
+		const int32 Count = MedianStream.RandRange(1, 257);
+		TArray<int32> IntValues;
+		TArray<float> FloatValues;
+		IntValues.Reserve(Count);
+		FloatValues.Reserve(Count);
+		for (int32 Index = 0; Index < Count; ++Index)
+		{
+			const int32 Value = MedianStream.RandRange(-1000, 1000);
+			IntValues.Add(Value);
+			FloatValues.Add(static_cast<float>(Value) * 0.25f);
+		}
+
+		TArray<int32> SortedInts = IntValues;
+		SortedInts.Sort();
+		const int32 Middle = SortedInts.Num() / 2;
+		const float ExpectedIntMedian = SortedInts.Num() % 2 == 0
+			? static_cast<float>((static_cast<double>(SortedInts[Middle - 1]) + static_cast<double>(SortedInts[Middle])) * 0.5)
+			: static_cast<float>(SortedInts[Middle]);
+		TestTrue(
+			FString::Printf(TEXT("Integer median fuzz case %d"), Iteration),
+			FMath::IsNearlyEqual(UDirectiveUtilMathFunctionLibrary::GetIntArrayMedian(IntValues), ExpectedIntMedian, 1.e-4f));
+
+		TArray<float> SortedFloats = FloatValues;
+		SortedFloats.Sort();
+		const float ExpectedFloatMedian = SortedFloats.Num() % 2 == 0
+			? static_cast<float>((static_cast<double>(SortedFloats[Middle - 1]) + static_cast<double>(SortedFloats[Middle])) * 0.5)
+			: SortedFloats[Middle];
+		TestTrue(
+			FString::Printf(TEXT("Float median fuzz case %d"), Iteration),
+			FMath::IsNearlyEqual(UDirectiveUtilMathFunctionLibrary::GetFloatArrayMedian(FloatValues), ExpectedFloatMedian, 1.e-4f));
 	}
 
 	FRandomStream StreamA(12345);

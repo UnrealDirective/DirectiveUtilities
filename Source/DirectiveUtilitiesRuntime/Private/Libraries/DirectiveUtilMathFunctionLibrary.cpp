@@ -103,6 +103,88 @@ namespace
 	{
 		return FMath::IsFinite(Weight) && Weight > 0.0f ? Weight : 0.0f;
 	}
+
+	template <typename ValueType>
+	ValueType SelectNth(TArray<ValueType>& Values, const int32 NthIndex)
+	{
+		int32 Left = 0;
+		int32 Right = Values.Num() - 1;
+		int32 RemainingDepth = FMath::FloorLog2(static_cast<uint32>(Values.Num())) * 2;
+		while (Left < Right)
+		{
+			if (RemainingDepth-- <= 0)
+			{
+				Values.Sort();
+				return Values[NthIndex];
+			}
+
+			const int32 Middle = Left + (Right - Left) / 2;
+			if (Values[Middle] < Values[Left])
+			{
+				Values.Swap(Middle, Left);
+			}
+			if (Values[Right] < Values[Left])
+			{
+				Values.Swap(Right, Left);
+			}
+			if (Values[Right] < Values[Middle])
+			{
+				Values.Swap(Right, Middle);
+			}
+			const ValueType Pivot = Values[Middle];
+
+			int32 LessEnd = Left;
+			int32 Current = Left;
+			int32 GreaterStart = Right;
+			while (Current <= GreaterStart)
+			{
+				if (Values[Current] < Pivot)
+				{
+					Values.Swap(LessEnd++, Current++);
+				}
+				else if (Pivot < Values[Current])
+				{
+					Values.Swap(Current, GreaterStart--);
+				}
+				else
+				{
+					++Current;
+				}
+			}
+
+			if (NthIndex < LessEnd)
+			{
+				Right = LessEnd - 1;
+			}
+			else if (NthIndex > GreaterStart)
+			{
+				Left = GreaterStart + 1;
+			}
+			else
+			{
+				return Values[NthIndex];
+			}
+		}
+		return Values[Left];
+	}
+
+	template <typename ValueType>
+	double CalculateMedian(TArray<ValueType>& Values)
+	{
+		const int32 Middle = Values.Num() / 2;
+		const ValueType UpperMiddle = SelectNth(Values, Middle);
+		if (Values.Num() % 2 != 0)
+		{
+			return static_cast<double>(UpperMiddle);
+		}
+
+		ValueType LowerMiddle = Values[0];
+		for (int32 Index = 1; Index < Middle; ++Index)
+		{
+			LowerMiddle = FMath::Max(LowerMiddle, Values[Index]);
+		}
+		return (static_cast<double>(LowerMiddle) + static_cast<double>(UpperMiddle)) * 0.5;
+	}
 }
 
 float UDirectiveUtilMathFunctionLibrary::PerlinNoise2D(const FVector2D Position)
@@ -312,15 +394,8 @@ float UDirectiveUtilMathFunctionLibrary::GetIntArrayMedian(const TArray<int32>& 
 		return 0.0f;
 	}
 
-	TArray<int32> Sorted = Values;
-	Sorted.Sort();
-
-	const int32 Middle = Sorted.Num() / 2;
-	if (Sorted.Num() % 2 == 0)
-	{
-		return static_cast<float>((static_cast<double>(Sorted[Middle - 1]) + static_cast<double>(Sorted[Middle])) * 0.5);
-	}
-	return static_cast<float>(Sorted[Middle]);
+	TArray<int32> WorkingValues = Values;
+	return static_cast<float>(CalculateMedian(WorkingValues));
 }
 
 float UDirectiveUtilMathFunctionLibrary::GetIntArrayStandardDeviation(const TArray<int32>& Values)
@@ -372,15 +447,18 @@ float UDirectiveUtilMathFunctionLibrary::GetFloatArrayMedian(const TArray<float>
 		return 0.0f;
 	}
 
-	TArray<float> Sorted = Values;
-	Sorted.Sort();
-
-	const int32 Middle = Sorted.Num() / 2;
-	if (Sorted.Num() % 2 == 0)
+	TArray<float> WorkingValues = Values;
+	if (WorkingValues.ContainsByPredicate([](const float Value) { return FMath::IsNaN(Value); }))
 	{
-		return static_cast<float>((static_cast<double>(Sorted[Middle - 1]) + static_cast<double>(Sorted[Middle])) * 0.5);
+		WorkingValues.Sort();
+		const int32 Middle = WorkingValues.Num() / 2;
+		if (WorkingValues.Num() % 2 == 0)
+		{
+			return static_cast<float>((static_cast<double>(WorkingValues[Middle - 1]) + static_cast<double>(WorkingValues[Middle])) * 0.5);
+		}
+		return WorkingValues[Middle];
 	}
-	return Sorted[Middle];
+	return static_cast<float>(CalculateMedian(WorkingValues));
 }
 
 float UDirectiveUtilMathFunctionLibrary::GetFloatArrayStandardDeviation(const TArray<float>& Values)

@@ -14,6 +14,80 @@ namespace
 		const FTCHARToUTF8 Converter(*String, String.Len());
 		return TArray<uint8>(reinterpret_cast<const uint8*>(Converter.Get()), Converter.Length());
 	}
+
+	int32 CalculateLevenshteinDistance(
+		FStringView Left,
+		FStringView Right,
+		TArray<int32>& PreviousRow,
+		TArray<int32>& CurrentRow)
+	{
+		int32 Start = 0;
+		while (Start < Left.Len() && Start < Right.Len() && Left[Start] == Right[Start])
+		{
+			++Start;
+		}
+
+		int32 LeftEnd = Left.Len();
+		int32 RightEnd = Right.Len();
+		while (LeftEnd > Start && RightEnd > Start && Left[LeftEnd - 1] == Right[RightEnd - 1])
+		{
+			--LeftEnd;
+			--RightEnd;
+		}
+
+		int32 LeftLength = LeftEnd - Start;
+		int32 RightLength = RightEnd - Start;
+		int32 LeftStart = Start;
+		int32 RightStart = Start;
+		if (RightLength > LeftLength)
+		{
+			Swap(Left, Right);
+			Swap(LeftLength, RightLength);
+			Swap(LeftStart, RightStart);
+		}
+
+		if (RightLength == 0)
+		{
+			return LeftLength;
+		}
+
+		PreviousRow.SetNumUninitialized(RightLength + 1);
+		CurrentRow.SetNumUninitialized(RightLength + 1);
+		for (int32 ColumnIndex = 0; ColumnIndex <= RightLength; ++ColumnIndex)
+		{
+			PreviousRow[ColumnIndex] = ColumnIndex;
+		}
+
+		for (int32 RowIndex = 1; RowIndex <= LeftLength; ++RowIndex)
+		{
+			CurrentRow[0] = RowIndex;
+			for (int32 ColumnIndex = 1; ColumnIndex <= RightLength; ++ColumnIndex)
+			{
+				const int32 SubstitutionCost = Left[LeftStart + RowIndex - 1] == Right[RightStart + ColumnIndex - 1] ? 0 : 1;
+				CurrentRow[ColumnIndex] = FMath::Min3(
+					PreviousRow[ColumnIndex] + 1,
+					CurrentRow[ColumnIndex - 1] + 1,
+					PreviousRow[ColumnIndex - 1] + SubstitutionCost);
+			}
+			Swap(PreviousRow, CurrentRow);
+		}
+		return PreviousRow[RightLength];
+	}
+
+	float CalculateStringSimilarity(
+		const FStringView Left,
+		const FStringView Right,
+		const int32 MaxLength,
+		TArray<int32>& PreviousRow,
+		TArray<int32>& CurrentRow)
+	{
+		if (MaxLength == 0)
+		{
+			return 1.0f;
+		}
+		const int32 Distance = CalculateLevenshteinDistance(Left, Right, PreviousRow, CurrentRow);
+		return 1.0f - static_cast<float>(Distance) / static_cast<float>(MaxLength);
+	}
 }
 
 bool UDirectiveUtilStringFunctionLibrary::ContainsLetters(const FString& String)
@@ -219,50 +293,27 @@ TArray<FString> UDirectiveUtilStringFunctionLibrary::GetSortedStringArray(const 
 
 int32 UDirectiveUtilStringFunctionLibrary::GetLevenshteinDistance(const FString& A, const FString& B, const bool bCaseSensitive)
 {
-	const FString StringA = bCaseSensitive ? A : A.ToLower();
-	const FString StringB = bCaseSensitive ? B : B.ToLower();
-	const int32 LenA = StringA.Len();
-	const int32 LenB = StringB.Len();
-
-	if (LenA == 0) { return LenB; }
-	if (LenB == 0) { return LenA; }
-
+	const FString NormalizedA = bCaseSensitive ? FString() : A.ToLower();
+	const FString NormalizedB = bCaseSensitive ? FString() : B.ToLower();
+	const FStringView ViewA = bCaseSensitive ? FStringView(A) : FStringView(NormalizedA);
+	const FStringView ViewB = bCaseSensitive ? FStringView(B) : FStringView(NormalizedB);
 	TArray<int32> PreviousRow;
 	TArray<int32> CurrentRow;
-	PreviousRow.SetNumUninitialized(LenB + 1);
-	CurrentRow.SetNumUninitialized(LenB + 1);
-
-	for (int32 ColumnIndex = 0; ColumnIndex <= LenB; ++ColumnIndex)
-	{
-		PreviousRow[ColumnIndex] = ColumnIndex;
-	}
-
-	for (int32 RowIndex = 1; RowIndex <= LenA; ++RowIndex)
-	{
-		CurrentRow[0] = RowIndex;
-		for (int32 ColumnIndex = 1; ColumnIndex <= LenB; ++ColumnIndex)
-		{
-			const int32 SubstitutionCost = (StringA[RowIndex - 1] == StringB[ColumnIndex - 1]) ? 0 : 1;
-			CurrentRow[ColumnIndex] = FMath::Min3(
-				PreviousRow[ColumnIndex] + 1,
-				CurrentRow[ColumnIndex - 1] + 1,
-				PreviousRow[ColumnIndex - 1] + SubstitutionCost);
-		}
-		Exchange(PreviousRow, CurrentRow);
-	}
-
-	return PreviousRow[LenB];
+	return CalculateLevenshteinDistance(ViewA, ViewB, PreviousRow, CurrentRow);
 }
 
 float UDirectiveUtilStringFunctionLibrary::GetStringSimilarity(const FString& A, const FString& B, const bool bCaseSensitive)
 {
-	const int32 MaxLength = FMath::Max(A.Len(), B.Len());
-	if (MaxLength == 0)
-	{
-		return 1.0f;
-	}
-	const int32 Distance = GetLevenshteinDistance(A, B, bCaseSensitive);
-	return 1.0f - (static_cast<float>(Distance) / static_cast<float>(MaxLength));
+	const FString NormalizedA = bCaseSensitive ? FString() : A.ToLower();
+	const FString NormalizedB = bCaseSensitive ? FString() : B.ToLower();
+	TArray<int32> PreviousRow;
+	TArray<int32> CurrentRow;
+	return CalculateStringSimilarity(
+		bCaseSensitive ? FStringView(A) : FStringView(NormalizedA),
+		bCaseSensitive ? FStringView(B) : FStringView(NormalizedB),
+		FMath::Max(A.Len(), B.Len()),
+		PreviousRow,
+		CurrentRow);
 }
 
 bool UDirectiveUtilStringFunctionLibrary::ContainsAny(const FString& Source, const TArray<FString>& SearchTerms, const bool bCaseSensitive)
@@ -412,14 +463,31 @@ int32 UDirectiveUtilStringFunctionLibrary::FindBestStringMatch(const FString& In
 {
 	OutSimilarity = 0.0f;
 	int32 BestIndex = INDEX_NONE;
+	const FString NormalizedInput = bCaseSensitive ? FString() : Input.ToLower();
+	const FStringView InputView = bCaseSensitive ? FStringView(Input) : FStringView(NormalizedInput);
+	TArray<int32> PreviousRow;
+	TArray<int32> CurrentRow;
 
 	for (int32 Index = 0; Index < Candidates.Num(); ++Index)
 	{
-		const float Similarity = GetStringSimilarity(Input, Candidates[Index], bCaseSensitive);
+		const FString NormalizedCandidate = bCaseSensitive ? FString() : Candidates[Index].ToLower();
+		const FStringView CandidateView = bCaseSensitive
+			? FStringView(Candidates[Index])
+			: FStringView(NormalizedCandidate);
+		const float Similarity = CalculateStringSimilarity(
+			InputView,
+			CandidateView,
+			FMath::Max(Input.Len(), Candidates[Index].Len()),
+			PreviousRow,
+			CurrentRow);
 		if (BestIndex == INDEX_NONE || Similarity > OutSimilarity)
 		{
 			BestIndex = Index;
 			OutSimilarity = Similarity;
+			if (Similarity == 1.0f)
+			{
+				break;
+			}
 		}
 	}
 	return BestIndex;

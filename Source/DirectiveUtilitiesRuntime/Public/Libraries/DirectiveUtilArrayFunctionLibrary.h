@@ -173,6 +173,47 @@ public:
 	UFUNCTION(BlueprintPure, CustomThunk, meta=(DisplayName = "Get Most Common", ArrayParm = "TargetArray", ArrayTypeDependentParams = "OutItem", BlueprintThreadSafe), Category="Directive Utilities|Array")
 	static bool Array_GetMostCommon(const TArray<int32>& TargetArray, int32& OutItem, int32& OutCount);
 
+	/**
+	 * Returns randomly selected elements from the array.
+	 * @param TargetArray The array to sample.
+	 * @param Count The requested number of elements.
+	 * @param bWithReplacement Whether the same source element can be selected more than once.
+	 * @param OutArray The sampled elements.
+	 */
+	UFUNCTION(BlueprintCallable, CustomThunk, meta=(DisplayName = "Sample Array", ArrayParm = "TargetArray,OutArray", ArrayTypeDependentParams = "OutArray"), Category="Directive Utilities|Array")
+	static void Array_Sample(const TArray<int32>& TargetArray, int32 Count, bool bWithReplacement, TArray<int32>& OutArray);
+
+	/**
+	 * Returns randomly selected elements using a random stream.
+	 * @param TargetArray The array to sample.
+	 * @param Count The requested number of elements.
+	 * @param bWithReplacement Whether the same source element can be selected more than once.
+	 * @param RandomStream The stream used to select elements.
+	 * @param OutArray The sampled elements.
+	 */
+	UFUNCTION(BlueprintCallable, CustomThunk, meta=(DisplayName = "Sample Array from Stream", ArrayParm = "TargetArray,OutArray", ArrayTypeDependentParams = "OutArray"), Category="Directive Utilities|Array")
+	static void Array_SampleFromStream(const TArray<int32>& TargetArray, int32 Count, bool bWithReplacement, UPARAM(ref) FRandomStream& RandomStream, TArray<int32>& OutArray);
+
+	/**
+	 * Returns one zero-based page from the array.
+	 * @param TargetArray The array to read.
+	 * @param PageIndex The zero-based page index.
+	 * @param PageSize The maximum number of elements per page.
+	 * @param OutArray The requested page.
+	 * @param OutPageCount The total number of pages.
+	 * @returns True when the page index and size are valid.
+	 */
+	UFUNCTION(BlueprintPure, CustomThunk, meta=(DisplayName = "Get Array Page", ArrayParm = "TargetArray,OutArray", ArrayTypeDependentParams = "OutArray", BlueprintThreadSafe), Category="Directive Utilities|Array")
+	static bool Array_GetPage(const TArray<int32>& TargetArray, int32 PageIndex, int32 PageSize, TArray<int32>& OutArray, int32& OutPageCount);
+
+	/** Sorts strings in natural order so embedded numbers are compared numerically. */
+	UFUNCTION(BlueprintCallable, Category="Directive Utilities|Array")
+	static void NaturalSortStringArray(UPARAM(ref) TArray<FString>& TargetArray, bool bDescending = false);
+
+	/** Sorts names in natural order so embedded numbers are compared numerically. */
+	UFUNCTION(BlueprintCallable, Category="Directive Utilities|Array")
+	static void NaturalSortNameArray(UPARAM(ref) TArray<FName>& TargetArray, bool bDescending = false);
+
 
 	/*~
 	 * Native functions that will be called by the below custom thunk layers, which read off the property address and call the appropriate native handler.
@@ -194,6 +235,8 @@ public:
 	static void GenericArray_GetDistinct(const void* TargetArray, const FArrayProperty* TargetArrayProperty, void* OutArray, const FArrayProperty* OutArrayProperty);
 	static int32 GenericArray_CountOccurrences(const void* TargetArray, const FArrayProperty* ArrayProperty, const void* ItemToCount);
 	static bool GenericArray_GetMostCommon(const void* TargetArray, const FArrayProperty* ArrayProperty, void* OutItemPtr, int32* OutCount);
+	static void GenericArray_Sample(const void* TargetArray, const FArrayProperty* TargetArrayProperty, int32 Count, bool bWithReplacement, FRandomStream* RandomStream, void* OutArray, const FArrayProperty* OutArrayProperty);
+	static bool GenericArray_GetPage(const void* TargetArray, const FArrayProperty* TargetArrayProperty, int32 PageIndex, int32 PageSize, void* OutArray, const FArrayProperty* OutArrayProperty, int32* OutPageCount);
 
 	/*~
 	 * Custom thunk layers that read off the property address and call the appropriate native handler.
@@ -712,5 +755,101 @@ public:
 		*static_cast<bool*>(RESULT_PARAM) = GenericArray_GetMostCommon(ArrayAddr, ArrayProperty, ItemPtr, OutCount);
 		P_NATIVE_END;
 		InnerProp->DestroyValue(StorageSpace);
+	}
+
+	DECLARE_FUNCTION(execArray_Sample)
+	{
+		Stack.MostRecentProperty = nullptr;
+		Stack.StepCompiledIn<FArrayProperty>(nullptr);
+		const void* SourceArrayAddr = Stack.MostRecentPropertyAddress;
+		const FArrayProperty* SourceArrayProperty = CastField<FArrayProperty>(Stack.MostRecentProperty);
+		if (!SourceArrayProperty)
+		{
+			Stack.bArrayContextFailed = true;
+			return;
+		}
+		P_GET_PROPERTY(FIntProperty, Count);
+		P_GET_UBOOL(bWithReplacement);
+
+		Stack.MostRecentProperty = nullptr;
+		Stack.StepCompiledIn<FArrayProperty>(nullptr);
+		void* OutArrayAddr = Stack.MostRecentPropertyAddress;
+		const FArrayProperty* OutArrayProperty = CastField<FArrayProperty>(Stack.MostRecentProperty);
+		if (!OutArrayProperty)
+		{
+			Stack.bArrayContextFailed = true;
+			return;
+		}
+
+		P_FINISH;
+		P_NATIVE_BEGIN;
+		GenericArray_Sample(SourceArrayAddr, SourceArrayProperty, Count, bWithReplacement, nullptr, OutArrayAddr, OutArrayProperty);
+		P_NATIVE_END;
+	}
+
+	DECLARE_FUNCTION(execArray_SampleFromStream)
+	{
+		Stack.MostRecentProperty = nullptr;
+		Stack.StepCompiledIn<FArrayProperty>(nullptr);
+		const void* SourceArrayAddr = Stack.MostRecentPropertyAddress;
+		const FArrayProperty* SourceArrayProperty = CastField<FArrayProperty>(Stack.MostRecentProperty);
+		if (!SourceArrayProperty)
+		{
+			Stack.bArrayContextFailed = true;
+			return;
+		}
+		P_GET_PROPERTY(FIntProperty, Count);
+		P_GET_UBOOL(bWithReplacement);
+		P_GET_STRUCT_REF(FRandomStream, RandomStream);
+
+		Stack.MostRecentProperty = nullptr;
+		Stack.StepCompiledIn<FArrayProperty>(nullptr);
+		void* OutArrayAddr = Stack.MostRecentPropertyAddress;
+		const FArrayProperty* OutArrayProperty = CastField<FArrayProperty>(Stack.MostRecentProperty);
+		if (!OutArrayProperty)
+		{
+			Stack.bArrayContextFailed = true;
+			return;
+		}
+
+		P_FINISH;
+		P_NATIVE_BEGIN;
+		GenericArray_Sample(SourceArrayAddr, SourceArrayProperty, Count, bWithReplacement, &RandomStream, OutArrayAddr, OutArrayProperty);
+		P_NATIVE_END;
+	}
+
+	DECLARE_FUNCTION(execArray_GetPage)
+	{
+		Stack.MostRecentProperty = nullptr;
+		Stack.StepCompiledIn<FArrayProperty>(nullptr);
+		const void* SourceArrayAddr = Stack.MostRecentPropertyAddress;
+		const FArrayProperty* SourceArrayProperty = CastField<FArrayProperty>(Stack.MostRecentProperty);
+		if (!SourceArrayProperty)
+		{
+			Stack.bArrayContextFailed = true;
+			return;
+		}
+		P_GET_PROPERTY(FIntProperty, PageIndex);
+		P_GET_PROPERTY(FIntProperty, PageSize);
+
+		Stack.MostRecentProperty = nullptr;
+		Stack.StepCompiledIn<FArrayProperty>(nullptr);
+		void* OutArrayAddr = Stack.MostRecentPropertyAddress;
+		const FArrayProperty* OutArrayProperty = CastField<FArrayProperty>(Stack.MostRecentProperty);
+		if (!OutArrayProperty)
+		{
+			Stack.bArrayContextFailed = true;
+			return;
+		}
+
+		Stack.MostRecentProperty = nullptr;
+		Stack.MostRecentPropertyAddress = nullptr;
+		Stack.StepCompiledIn<FProperty>(nullptr);
+		int32* OutPageCount = reinterpret_cast<int32*>(Stack.MostRecentPropertyAddress);
+
+		P_FINISH;
+		P_NATIVE_BEGIN;
+		*static_cast<bool*>(RESULT_PARAM) = GenericArray_GetPage(SourceArrayAddr, SourceArrayProperty, PageIndex, PageSize, OutArrayAddr, OutArrayProperty, OutPageCount);
+		P_NATIVE_END;
 	}
 };
