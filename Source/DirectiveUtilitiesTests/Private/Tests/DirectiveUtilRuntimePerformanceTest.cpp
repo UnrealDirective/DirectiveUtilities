@@ -299,6 +299,12 @@ bool FDirectiveUtilRuntimePerformanceTest::RunTest(const FString& Parameters)
 	for (const int32 ElementCount : {100, 1000, 10000, 100000})
 	{
 		const TArray<int32> Source = MakeSequentialIntegers(ElementCount);
+		TArray<float> Weights;
+		Weights.Reserve(ElementCount);
+		for (int32 Index = 0; Index < ElementCount; ++Index)
+		{
+			Weights.Add(Index % 11 == 0 ? 0.0f : static_cast<float>((Index % 17) + 1));
+		}
 		TArray<int32> Output;
 		FRandomStream RandomStream;
 
@@ -306,11 +312,23 @@ bool FDirectiveUtilRuntimePerformanceTest::RunTest(const FString& Parameters)
 			TEXT("SampleWithoutReplacement"), ElementCount, 16, SampleCount,
 			[&]() { TestObject->TestArray = Source; Output.Reset(); RandomStream.Initialize(1337); },
 			[&]() { UDirectiveUtilArrayFunctionLibrary::GenericArray_Sample(&TestObject->TestArray, ArrayProperty, 16, false, &RandomStream, &Output, ArrayProperty); }));
+
+		Results.Add(Measure(
+			TEXT("SampleWeightedWithoutReplacement"), ElementCount, 16, SampleCount,
+			[&]() { TestObject->TestArray = Source; Output.Reset(); RandomStream.Initialize(1337); },
+			[&]() { UDirectiveUtilArrayFunctionLibrary::GenericArray_SampleWeighted(&TestObject->TestArray, ArrayProperty, Weights, 16, false, &RandomStream, &Output, ArrayProperty); }));
+
+		Results.Add(Measure(
+			TEXT("SampleWeightedWithReplacement"), ElementCount, 256, SampleCount,
+			[&]() { TestObject->TestArray = Source; Output.Reset(); RandomStream.Initialize(1337); },
+			[&]() { UDirectiveUtilArrayFunctionLibrary::GenericArray_SampleWeighted(&TestObject->TestArray, ArrayProperty, Weights, 256, true, &RandomStream, &Output, ArrayProperty); }));
 	}
 
 	{
 		constexpr int32 ElementCount = 100000;
 		const TArray<int32> Source = MakeSequentialIntegers(ElementCount);
+		TArray<float> Weights;
+		Weights.Init(1.0f, ElementCount);
 		TArray<int32> Output;
 		FRandomStream RandomStream;
 		int32 PageCount = 0;
@@ -334,6 +352,14 @@ bool FDirectiveUtilRuntimePerformanceTest::RunTest(const FString& Parameters)
 			TEXT("SampleWithReplacement"), ElementCount, 256, SampleCount,
 			[&]() { TestObject->TestArray = Source; Output.Reset(); RandomStream.Initialize(1337); },
 			[&]() { UDirectiveUtilArrayFunctionLibrary::GenericArray_Sample(&TestObject->TestArray, ArrayProperty, 256, true, &RandomStream, &Output, ArrayProperty); }));
+
+		for (const int32 RequestedCount : {1, 16, 1000, 50000})
+		{
+			Results.Add(Measure(
+				TEXT("SampleWeightedRatio"), ElementCount, RequestedCount, SampleCount,
+				[&]() { TestObject->TestArray = Source; Output.Reset(); RandomStream.Initialize(1337); },
+				[&]() { UDirectiveUtilArrayFunctionLibrary::GenericArray_SampleWeighted(&TestObject->TestArray, ArrayProperty, Weights, RequestedCount, false, &RandomStream, &Output, ArrayProperty); }));
+		}
 
 		for (const int32 PageSize : {1, 128, 4096})
 		{

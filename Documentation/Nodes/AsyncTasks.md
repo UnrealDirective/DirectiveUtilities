@@ -1,8 +1,8 @@
 # Async Tasks
 
-> Latent Blueprint async-action nodes for cancellable delays, soft asset/class loading, off-thread collision traces, and path-following movement to a location or actor.
+> Latent Blueprint async-action nodes for timed flow, soft asset/class loading, off-thread collision traces, and path-following movement to a location or actor.
 
-**Module:** `DirectiveUtilitiesRuntime (Runtime)` &nbsp;|&nbsp; **Header:** `Source/DirectiveUtilitiesRuntime/Public/Tasks/DirectiveUtilTask_Delay.h`, `Source/DirectiveUtilitiesRuntime/Public/Tasks/DirectiveUtilTask_AsyncLoadAsset.h`, `Source/DirectiveUtilitiesRuntime/Public/Tasks/DirectiveUtilTask_AsyncTrace.h`, `Source/DirectiveUtilitiesRuntime/Public/Tasks/DirectiveUtilTask_MoveToLocation.h`
+**Module:** `DirectiveUtilitiesRuntime (Runtime)` &nbsp;|&nbsp; **Header:** `Source/DirectiveUtilitiesRuntime/Public/Tasks/DirectiveUtilTask_Delay.h`, `Source/DirectiveUtilitiesRuntime/Public/Tasks/DirectiveUtilTask_Flow.h`, `Source/DirectiveUtilitiesRuntime/Public/Tasks/DirectiveUtilTask_AsyncLoadAsset.h`, `Source/DirectiveUtilitiesRuntime/Public/Tasks/DirectiveUtilTask_AsyncTrace.h`, `Source/DirectiveUtilitiesRuntime/Public/Tasks/DirectiveUtilTask_MoveToLocation.h`
 
 ---
 
@@ -13,7 +13,7 @@
 static UDirectiveUtilTask_Delay* CancellableDelay(UObject* WorldContextObject, float Duration);
 ```
 
-Starts a cancellable delay. When the delay finishes the `Completed` delegate fires. Non-finite and non-positive durations complete on the next timer tick. Call `EndTask` on the async proxy to cancel the delay before it completes.
+Starts a cancellable delay. When the delay finishes the `Completed` delegate fires. Non-finite and non-positive durations complete on the next timer tick. Call `Cancel` on the async proxy to stop it.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -21,7 +21,62 @@ Starts a cancellable delay. When the delay finishes the `Completed` delegate fir
 | Duration | `float` | The duration of the delay in seconds. |
 
 **Output exec pins:**
+
 - `Completed` (`FOnDelayCompleted`, no params): fired when the delay has completed.
+
+`EndTask` remains available as a deprecated alias for existing Blueprints.
+
+## Update for Duration
+**Type:** Blueprint Callable &nbsp;|&nbsp; **Category:** `Directive Utilities|FlowControl`
+
+```cpp
+static UDirectiveUtilTask_UpdateForDuration* UpdateForDuration(
+    UObject* WorldContextObject,
+    float Duration,
+    float UpdateInterval = 0.0f);
+```
+
+Reports elapsed time and normalized progress until the duration ends. An update interval of zero runs once per world tick. The final update has an alpha of `1.0` and fires before `Completed`. Game pause stops the timer, and time dilation scales it.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| WorldContextObject | `UObject*` | The world context object. |
+| Duration | `float` | The duration in seconds. Non-positive and non-finite values finish on the next tick. |
+| UpdateInterval | `float` | The minimum time between updates. Zero updates each tick. |
+
+**Output exec pins:**
+
+- `Updated` (`FOnDurationUpdated`, `float ElapsedTime, float DeltaTime, float Alpha`): fired as game time advances.
+- `Completed` (`FOnDurationCompleted`, no params): fired after the final update.
+
+Call `Cancel` on the async proxy to stop without firing either delegate again.
+
+## Repeat with Interval
+**Type:** Blueprint Callable &nbsp;|&nbsp; **Category:** `Directive Utilities|FlowControl`
+
+```cpp
+static UDirectiveUtilTask_RepeatWithInterval* RepeatWithInterval(
+    UObject* WorldContextObject,
+    int32 Count,
+    float Interval,
+    float InitialDelay = 0.0f);
+```
+
+Runs a fixed number of iterations. Zero intervals run once per world tick, and longer intervals fire at most once per frame. The first index is zero, and `Remaining` reports the iterations left after the current one. Game pause stops the timer, and time dilation scales it.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| WorldContextObject | `UObject*` | The world context object. |
+| Count | `int32` | The number of iterations. Non-positive values complete on the next tick. |
+| Interval | `float` | The delay between iterations. Zero runs on consecutive ticks. |
+| InitialDelay | `float` | The delay before the first iteration. Zero starts on the next tick. |
+
+**Output exec pins:**
+
+- `Iteration` (`FOnRepeatIteration`, `int32 Index, int32 Remaining`): fired once per iteration.
+- `Completed` (`FOnRepeatCompleted`, no params): fired after the final iteration.
+
+Call `Cancel` on the async proxy to stop without firing either delegate again.
 
 ## End Task
 **Type:** Blueprint Callable &nbsp;|&nbsp; **Category:** `Directive Utilities|FlowControl`, `Directive Utilities|Navigation`
@@ -32,7 +87,7 @@ void UDirectiveUtilTask_MoveToLocation::EndTask();
 void UDirectiveUtilTask_MoveToActor::EndTask();
 ```
 
-Ends the async proxy early. On a cancellable delay, this clears the timer and does not fire `Completed`. On movement tasks, this stops the task and fires `Completed` exactly once with `bSuccess` set to false.
+Ends the async proxy early. `EndTask` is deprecated for cancellable delay; use `Cancel`. On movement tasks, it stops the task and fires `Completed` exactly once with `bSuccess` set to false.
 
 ## Async Load Asset
 **Type:** Blueprint Callable &nbsp;|&nbsp; **Category:** `Directive Utilities|AssetManagement`

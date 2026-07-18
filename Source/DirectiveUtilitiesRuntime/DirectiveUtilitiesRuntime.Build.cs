@@ -13,6 +13,8 @@ public class DirectiveUtilitiesRuntime : ModuleRules
 			new string[]
 			{
 				"Core",
+				"CoreUObject",
+				"Engine",
 				"GameplayTags",
 				"NetCore",
 			}
@@ -22,8 +24,6 @@ public class DirectiveUtilitiesRuntime : ModuleRules
 		PrivateDependencyModuleNames.AddRange(
 			new string[]
 			{
-				"CoreUObject",
-				"Engine",
 				"Slate",
 				"SlateCore",
 				"AIModule",

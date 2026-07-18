@@ -1,8 +1,52 @@
 #include "Libraries/DirectiveUtilFunctionLibrary.h"
+#include "Engine/World.h"
 #include "Misc/AutomationTest.h"
+#include "Misc/App.h"
 
 namespace DirectiveUtilFunctionLibraryTest
 {
+	EDirectiveUtilBuildConfiguration GetExpectedBuildConfiguration(const EBuildConfiguration BuildConfiguration)
+	{
+		switch (BuildConfiguration)
+		{
+		case EBuildConfiguration::Unknown:
+			return EDirectiveUtilBuildConfiguration::Unknown;
+		case EBuildConfiguration::Debug:
+			return EDirectiveUtilBuildConfiguration::Debug;
+		case EBuildConfiguration::DebugGame:
+			return EDirectiveUtilBuildConfiguration::DebugGame;
+		case EBuildConfiguration::Development:
+			return EDirectiveUtilBuildConfiguration::Development;
+		case EBuildConfiguration::Shipping:
+			return EDirectiveUtilBuildConfiguration::Shipping;
+		case EBuildConfiguration::Test:
+			return EDirectiveUtilBuildConfiguration::Test;
+		}
+
+		return EDirectiveUtilBuildConfiguration::Unknown;
+	}
+
+	EDirectiveUtilBuildTargetType GetExpectedBuildTargetType(const EBuildTargetType BuildTargetType)
+	{
+		switch (BuildTargetType)
+		{
+		case EBuildTargetType::Unknown:
+			return EDirectiveUtilBuildTargetType::Unknown;
+		case EBuildTargetType::Game:
+			return EDirectiveUtilBuildTargetType::Game;
+		case EBuildTargetType::Server:
+			return EDirectiveUtilBuildTargetType::Server;
+		case EBuildTargetType::Client:
+			return EDirectiveUtilBuildTargetType::Client;
+		case EBuildTargetType::Editor:
+			return EDirectiveUtilBuildTargetType::Editor;
+		case EBuildTargetType::Program:
+			return EDirectiveUtilBuildTargetType::Program;
+		}
+
+		return EDirectiveUtilBuildTargetType::Unknown;
+	}
+
 	enum class EClipboardStage : uint8
 	{
 		CopyText,
@@ -115,6 +159,80 @@ bool FDirectiveUtilFunctionLibraryTest::RunTest(const FString& Parameters)
 		"IsRunningInEditor should match the target context",
 		UDirectiveUtilFunctionLibrary::IsRunningInEditor(),
 		bExpectedEditorContext);
+
+	struct FWorldTypeCase
+	{
+		EWorldType::Type WorldType;
+		EDirectiveUtilWorldType Expected;
+	};
+
+	const FWorldTypeCase WorldTypeCases[] = {
+		{ EWorldType::None, EDirectiveUtilWorldType::None },
+		{ EWorldType::Game, EDirectiveUtilWorldType::Game },
+		{ EWorldType::Editor, EDirectiveUtilWorldType::Editor },
+		{ EWorldType::PIE, EDirectiveUtilWorldType::PlayInEditor },
+		{ EWorldType::EditorPreview, EDirectiveUtilWorldType::EditorPreview },
+		{ EWorldType::GamePreview, EDirectiveUtilWorldType::GamePreview },
+		{ EWorldType::GameRPC, EDirectiveUtilWorldType::GameRPC },
+		{ EWorldType::Inactive, EDirectiveUtilWorldType::Inactive }
+	};
+
+	UWorld* TestWorld = NewObject<UWorld>();
+	TestNotNull("A transient world should be created for world type tests", TestWorld);
+	if (TestWorld)
+	{
+		for (const FWorldTypeCase& TestCase : WorldTypeCases)
+		{
+			TestWorld->WorldType = TestCase.WorldType;
+			TestEqual(
+				FString::Printf(TEXT("GetWorldType should map %s"), LexToString(TestCase.WorldType)),
+				UDirectiveUtilFunctionLibrary::GetWorldType(TestWorld),
+				TestCase.Expected);
+		}
+
+		TestWorld->WorldType = static_cast<EWorldType::Type>(MAX_uint8);
+		TestEqual(
+			"GetWorldType should reject unsupported world types",
+			UDirectiveUtilFunctionLibrary::GetWorldType(TestWorld),
+			EDirectiveUtilWorldType::Unknown);
+	}
+
+	TestEqual(
+		"GetWorldType should return Unknown for a null context",
+		UDirectiveUtilFunctionLibrary::GetWorldType(nullptr),
+		EDirectiveUtilWorldType::Unknown);
+	TestEqual(
+		"GetWorldType should return Unknown when the context has no world",
+		UDirectiveUtilFunctionLibrary::GetWorldType(GetTransientPackage()),
+		EDirectiveUtilWorldType::Unknown);
+
+	TestEqual(
+		"GetBuildConfigurationType should match the application build configuration",
+		UDirectiveUtilFunctionLibrary::GetBuildConfigurationType(),
+		DirectiveUtilFunctionLibraryTest::GetExpectedBuildConfiguration(FApp::GetBuildConfiguration()));
+	TestEqual(
+		"GetBuildTargetType should match the application build target",
+		UDirectiveUtilFunctionLibrary::GetBuildTargetType(),
+		DirectiveUtilFunctionLibraryTest::GetExpectedBuildTargetType(FApp::GetBuildTargetType()));
+
+	TestNotNull("The world type enum should be reflected", StaticEnum<EDirectiveUtilWorldType>());
+	TestNotNull("The build configuration enum should be reflected", StaticEnum<EDirectiveUtilBuildConfiguration>());
+	TestNotNull("The build target type enum should be reflected", StaticEnum<EDirectiveUtilBuildTargetType>());
+
+	const UFunction* GetWorldTypeFunction = UDirectiveUtilFunctionLibrary::StaticClass()->FindFunctionByName(
+		GET_FUNCTION_NAME_CHECKED(UDirectiveUtilFunctionLibrary, GetWorldType));
+	TestNotNull("GetWorldType should be reflected", GetWorldTypeFunction);
+	if (GetWorldTypeFunction)
+	{
+		TestTrue("GetWorldType should be Blueprint pure", GetWorldTypeFunction->HasAnyFunctionFlags(FUNC_BlueprintPure));
+		TestFalse("GetWorldType should be available at runtime", GetWorldTypeFunction->HasAnyFunctionFlags(FUNC_EditorOnly));
+#if WITH_EDITOR
+		TestEqual(
+			"GetWorldType should use its input as the Blueprint world context",
+			GetWorldTypeFunction->GetMetaData(TEXT("WorldContext")),
+			FString(TEXT("WorldContextObject")));
+#endif
+	}
 
 	TArray<UClass*> RecursiveDerived;
 	UDirectiveUtilFunctionLibrary::GetChildClasses(UBlueprintFunctionLibrary::StaticClass(), true, RecursiveDerived);

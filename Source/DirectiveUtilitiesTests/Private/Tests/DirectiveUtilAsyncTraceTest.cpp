@@ -216,6 +216,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDirectiveUtilMoveToLocationTest, "DirectiveUti
 
 bool FDirectiveUtilMoveToLocationTest::RunTest(const FString& Parameters)
 {
+	AddExpectedMessagePlain(TEXT("Controller, pawn, or world is unavailable while moving to location. Aborting."), ELogVerbosity::Warning, EAutomationExpectedMessageFlags::Contains, -1);
 	AddExpectedMessagePlain(TEXT("Controller or pawn has been destroyed while moving to location. Aborting."), ELogVerbosity::Warning, EAutomationExpectedMessageFlags::Contains, -1);
 
 	{
@@ -354,6 +355,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDirectiveUtilMoveToActorTest, "DirectiveUtilit
 
 bool FDirectiveUtilMoveToActorTest::RunTest(const FString& Parameters)
 {
+	AddExpectedMessagePlain(TEXT("Controller, pawn, goal, or world is unavailable while moving to actor. Aborting."), ELogVerbosity::Warning, EAutomationExpectedMessageFlags::Contains, -1);
+	AddExpectedMessagePlain(TEXT("Controller, pawn, or world is unavailable while moving to actor. Aborting."), ELogVerbosity::Warning, EAutomationExpectedMessageFlags::Contains, -1);
 	AddExpectedMessagePlain(TEXT("Controller, pawn, or goal has been destroyed while moving to actor. Aborting."), ELogVerbosity::Warning, EAutomationExpectedMessageFlags::Contains, -1);
 
 	{

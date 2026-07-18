@@ -3,6 +3,7 @@
 
 #include "Libraries/DirectiveUtilArrayFunctionLibrary.h"
 
+#include "Algo/BinarySearch.h"
 #include "Algo/Sort.h"
 #include "Containers/ScriptArray.h"
 #include "Misc/ComparisonUtility.h"
@@ -62,6 +63,12 @@ namespace
 	{
 		int32 SourceIndex;
 		int32 Count;
+	};
+
+	struct FWeightedSampleCandidate
+	{
+		double Priority;
+		int32 SourceIndex;
 	};
 
 	bool HaveMatchingElementTypes(const FArrayProperty* SourceProperty, const FArrayProperty* OutProperty)
@@ -725,6 +732,29 @@ void UDirectiveUtilArrayFunctionLibrary::Array_SampleFromStream(
 	checkNoEntry();
 }
 
+bool UDirectiveUtilArrayFunctionLibrary::Array_SampleWeighted(
+	const TArray<int32>& TargetArray,
+	const TArray<float>& Weights,
+	const int32 Count,
+	const bool bWithReplacement,
+	TArray<int32>& OutArray)
+{
+	checkNoEntry();
+	return false;
+}
+
+bool UDirectiveUtilArrayFunctionLibrary::Array_SampleWeightedFromStream(
+	const TArray<int32>& TargetArray,
+	const TArray<float>& Weights,
+	const int32 Count,
+	const bool bWithReplacement,
+	FRandomStream& RandomStream,
+	TArray<int32>& OutArray)
+{
+	checkNoEntry();
+	return false;
+}
+
 void UDirectiveUtilArrayFunctionLibrary::GenericArray_Sample(
 	const void* TargetArray,
 	const FArrayProperty* TargetArrayProperty,
@@ -821,6 +851,132 @@ void UDirectiveUtilArrayFunctionLibrary::GenericArray_Sample(
 		AvailableIndices.RemoveAtSwap(SelectedIndex, 1, EAllowShrinking::No);
 	}
 	Result.MoveTo(OutArray);
+}
+
+bool UDirectiveUtilArrayFunctionLibrary::GenericArray_SampleWeighted(
+	const void* TargetArray,
+	const FArrayProperty* TargetArrayProperty,
+	const TArray<float>& Weights,
+	const int32 Count,
+	const bool bWithReplacement,
+	FRandomStream* RandomStream,
+	void* OutArray,
+	const FArrayProperty* OutArrayProperty)
+{
+	if (!TargetArray || !OutArray || !HaveMatchingElementTypes(TargetArrayProperty, OutArrayProperty))
+	{
+		return false;
+	}
+
+	FScriptArrayHelper SourceHelper(TargetArrayProperty, TargetArray);
+	const int32 SourceCount = SourceHelper.Num();
+	if (Count < 0 || Weights.Num() != SourceCount)
+	{
+		FArrayResultBuilder EmptyResult(OutArrayProperty, 0);
+		EmptyResult.MoveTo(OutArray);
+		return false;
+	}
+	if (Count == 0)
+	{
+		FArrayResultBuilder EmptyResult(OutArrayProperty, 0);
+		EmptyResult.MoveTo(OutArray);
+		return true;
+	}
+
+	TArray<double> PositiveWeights;
+	PositiveWeights.SetNumUninitialized(SourceCount);
+	double TotalWeight = 0.0;
+	int32 PositiveWeightCount = 0;
+	for (int32 SourceIndex = 0; SourceIndex < SourceCount; ++SourceIndex)
+	{
+		const float Weight = Weights[SourceIndex];
+		const double PositiveWeight = FMath::IsFinite(Weight) && Weight > 0.0f
+			? static_cast<double>(Weight)
+			: 0.0;
+		PositiveWeights[SourceIndex] = PositiveWeight;
+		TotalWeight += PositiveWeight;
+		PositiveWeightCount += PositiveWeight > 0.0 ? 1 : 0;
+	}
+
+	if (PositiveWeightCount == 0)
+	{
+		FArrayResultBuilder EmptyResult(OutArrayProperty, 0);
+		EmptyResult.MoveTo(OutArray);
+		return false;
+	}
+
+	const FProperty* InnerProperty = TargetArrayProperty->Inner;
+	auto RandomFraction = [RandomStream]()
+	{
+		return static_cast<double>(RandomStream ? RandomStream->FRand() : FMath::FRand());
+	};
+	if (bWithReplacement)
+	{
+		double PrefixWeight = 0.0;
+		for (double& Weight : PositiveWeights)
+		{
+			PrefixWeight += Weight;
+			Weight = PrefixWeight;
+		}
+
+		FArrayResultBuilder Result(OutArrayProperty, Count);
+		for (int32 SampleIndex = 0; SampleIndex < Count; ++SampleIndex)
+		{
+			const int32 SourceIndex = FMath::Min(
+				Algo::UpperBound(PositiveWeights, RandomFraction() * TotalWeight),
+				SourceCount - 1);
+			InnerProperty->CopySingleValueToScriptVM(Result.GetRawPtr(SampleIndex), SourceHelper.GetRawPtr(SourceIndex));
+		}
+		Result.MoveTo(OutArray);
+		return true;
+	}
+
+	const int32 SampleCount = FMath::Min(Count, PositiveWeightCount);
+	auto IsLowerPriority = [](const FWeightedSampleCandidate& Left, const FWeightedSampleCandidate& Right)
+	{
+		return Left.Priority < Right.Priority ||
+			(Left.Priority == Right.Priority && Left.SourceIndex > Right.SourceIndex);
+	};
+	auto IsHigherPriority = [&IsLowerPriority](const FWeightedSampleCandidate& Left, const FWeightedSampleCandidate& Right)
+	{
+		return IsLowerPriority(Right, Left);
+	};
+
+	TArray<FWeightedSampleCandidate> SelectedCandidates;
+	SelectedCandidates.Reserve(SampleCount);
+	for (int32 SourceIndex = 0; SourceIndex < SourceCount; ++SourceIndex)
+	{
+		const double Weight = PositiveWeights[SourceIndex];
+		if (Weight <= 0.0)
+		{
+			continue;
+		}
+
+		const double RandomValue = FMath::Max(RandomFraction(), TNumericLimits<double>::Min());
+		const FWeightedSampleCandidate Candidate{FMath::Loge(RandomValue) / Weight, SourceIndex};
+		if (SelectedCandidates.Num() < SampleCount)
+		{
+			SelectedCandidates.HeapPush(Candidate, IsLowerPriority);
+			continue;
+		}
+
+		if (IsHigherPriority(Candidate, SelectedCandidates[0]))
+		{
+			FWeightedSampleCandidate RemovedCandidate;
+			SelectedCandidates.HeapPop(RemovedCandidate, IsLowerPriority, EAllowShrinking::No);
+			SelectedCandidates.HeapPush(Candidate, IsLowerPriority);
+		}
+	}
+	Algo::Sort(SelectedCandidates, IsHigherPriority);
+
+	FArrayResultBuilder Result(OutArrayProperty, SampleCount);
+	for (int32 SampleIndex = 0; SampleIndex < SampleCount; ++SampleIndex)
+	{
+		const int32 SourceIndex = SelectedCandidates[SampleIndex].SourceIndex;
+		InnerProperty->CopySingleValueToScriptVM(Result.GetRawPtr(SampleIndex), SourceHelper.GetRawPtr(SourceIndex));
+	}
+	Result.MoveTo(OutArray);
+	return true;
 }
 
 bool UDirectiveUtilArrayFunctionLibrary::Array_GetPage(

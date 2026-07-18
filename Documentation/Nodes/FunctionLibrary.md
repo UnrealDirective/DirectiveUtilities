@@ -102,6 +102,45 @@ Returns true if the game is running in the Unreal Editor. Returns false in packa
 
 **Returns:** True if running in the editor.
 
+## Get World Type
+**Type:** Blueprint Pure &nbsp;|&nbsp; **Category:** `Directive Utilities|Utility`
+
+```cpp
+static EDirectiveUtilWorldType GetWorldType(const UObject* WorldContextObject);
+```
+
+Gets the type of world associated with the supplied context. The world context pin is filled automatically when the calling Blueprint provides one.
+
+| Value | Description |
+|-------|-------------|
+| Unknown | The context is null, has no world, or reports an unsupported world type. |
+| None | The world has no assigned type. |
+| Game | A game world, including packaged and standalone games. |
+| Editor | A world being edited. |
+| Play In Editor | A PIE world. |
+| Editor Preview | A preview world created by an editor tool. |
+| Game Preview | A game preview world. |
+| Game RPC | A minimal game RPC world. |
+| Inactive | An editor world that is loaded but not currently being edited. |
+
+## Get Build Configuration Type
+**Type:** Blueprint Pure &nbsp;|&nbsp; **Category:** `Directive Utilities|Utility`
+
+```cpp
+static EDirectiveUtilBuildConfiguration GetBuildConfigurationType();
+```
+
+Gets the running application's build configuration as an enum: Unknown, Debug, Debug Game, Development, Shipping, or Test. Unlike Unreal's string-returning `Get Build Configuration` node, this value can connect directly to `Switch on EDirectiveUtilBuildConfiguration`.
+
+## Get Build Target Type
+**Type:** Blueprint Pure &nbsp;|&nbsp; **Category:** `Directive Utilities|Utility`
+
+```cpp
+static EDirectiveUtilBuildTargetType GetBuildTargetType();
+```
+
+Gets the target that produced the running executable: Unknown, Game, Server, Client, Editor, or Program. This reports the build target, not the world's current network mode.
+
 ## Has Command Line Switch
 **Type:** Blueprint Pure &nbsp;|&nbsp; **Category:** `Directive Utilities|Utility`
 

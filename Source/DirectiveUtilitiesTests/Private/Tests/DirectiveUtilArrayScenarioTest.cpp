@@ -319,6 +319,97 @@ bool FDirectiveUtilArraySamplingScenarioTest::RunTest(const FString& Parameters)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FDirectiveUtilArrayWeightedSamplingScenarioTest,
+	"DirectiveUtilities.ArrayScenarios.WeightedSampling",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+
+bool FDirectiveUtilArrayWeightedSamplingScenarioTest::RunTest(const FString& Parameters)
+{
+	FArrayProperty* ArrayProperty = GetIntegerArrayProperty();
+	if (!TestNotNull("Integer array property should be available", ArrayProperty))
+	{
+		return false;
+	}
+
+	constexpr int32 Seed = 4815;
+	for (const int32 SourceCount : {0, 1, 2, 3, 17, 100, 1000, 4096})
+	{
+		const TArray<int32> Source = MakeSequentialValues(SourceCount);
+		TArray<float> Weights;
+		Weights.Reserve(SourceCount);
+		TSet<int32> SelectableValues;
+		for (int32 Index = 0; Index < SourceCount; ++Index)
+		{
+			const float Weight = Index % 3 == 0 ? 0.0f : static_cast<float>((Index % 7) + 1);
+			Weights.Add(Weight);
+			if (Weight > 0.0f)
+			{
+				SelectableValues.Add(Index);
+			}
+		}
+
+		const TArray<int32> RequestedCounts = {0, 1, SourceCount / 4, SourceCount, SourceCount + 5};
+		for (const int32 RequestedCount : RequestedCounts)
+		{
+			for (const bool bWithReplacement : {false, true})
+			{
+				FRandomStream FirstStream(Seed);
+				FRandomStream SecondStream(Seed);
+				TArray<int32> FirstSample;
+				TArray<int32> SecondSample;
+				const bool bFirstSucceeded = UDirectiveUtilArrayFunctionLibrary::GenericArray_SampleWeighted(
+					&Source,
+					ArrayProperty,
+					Weights,
+					RequestedCount,
+					bWithReplacement,
+					&FirstStream,
+					&FirstSample,
+					ArrayProperty);
+				const bool bSecondSucceeded = UDirectiveUtilArrayFunctionLibrary::GenericArray_SampleWeighted(
+					&Source,
+					ArrayProperty,
+					Weights,
+					RequestedCount,
+					bWithReplacement,
+					&SecondStream,
+					&SecondSample,
+					ArrayProperty);
+				const FString Label = FString::Printf(
+					TEXT("source=%d requested=%d replacement=%d"),
+					SourceCount,
+					RequestedCount,
+					bWithReplacement);
+
+				const bool bExpectedSuccess = RequestedCount == 0 || !SelectableValues.IsEmpty();
+				TestEqual(Label + TEXT(" first validity"), bFirstSucceeded, bExpectedSuccess);
+				TestEqual(Label + TEXT(" second validity"), bSecondSucceeded, bExpectedSuccess);
+				TestEqual(Label + TEXT(" deterministic"), FirstSample, SecondSample);
+				const int32 ExpectedCount = !bExpectedSuccess
+					? 0
+					: bWithReplacement
+						? RequestedCount
+						: FMath::Min(RequestedCount, SelectableValues.Num());
+				TestEqual(Label + TEXT(" count"), FirstSample.Num(), ExpectedCount);
+
+				TSet<int32> UniqueValues;
+				for (const int32 Value : FirstSample)
+				{
+					TestTrue(Label + TEXT(" selectable membership"), SelectableValues.Contains(Value));
+					UniqueValues.Add(Value);
+				}
+				if (!bWithReplacement)
+				{
+					TestEqual(Label + TEXT(" unique source indices"), UniqueValues.Num(), FirstSample.Num());
+				}
+			}
+		}
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FDirectiveUtilArrayRangeScenarioTest,
 	"DirectiveUtilities.ArrayScenarios.RangesAndPages",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)

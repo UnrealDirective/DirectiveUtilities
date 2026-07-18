@@ -306,6 +306,56 @@ Uses the same rules as `Sample Array`, but reads from a random stream. Streams c
 | RandomStream | `FRandomStream` | The stream used for selection. Its state advances. |
 | OutArray | `Wildcard Array` | The sampled values. |
 
+## Sample Weighted Array
+**Type:** Blueprint Callable &nbsp;|&nbsp; **Category:** `Directive Utilities|Array`
+
+```cpp
+static bool Array_SampleWeighted(
+    const TArray<int32>& TargetArray,
+    const TArray<float>& Weights,
+    int32 Count,
+    bool bWithReplacement,
+    TArray<int32>& OutArray);
+```
+
+Samples a wildcard array using one weight per source element. Negative and non-finite weights are treated as zero. Without replacement, the result is limited to the number of positive-weight entries.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| TargetArray | `Wildcard Array` | The array to sample. |
+| Weights | `TArray<float>` | The selection weight for each source index. |
+| Count | `int32` | The requested output size. |
+| bWithReplacement | `bool` | Allows the same source index to be selected more than once. |
+| OutArray | `Wildcard Array` | The sampled values. |
+
+**Returns:** False when `Count` is negative, the array lengths differ, or no entry has a positive weight for a non-empty request.
+
+## Sample Weighted Array From Stream
+**Type:** Blueprint Callable &nbsp;|&nbsp; **Category:** `Directive Utilities|Array`
+
+```cpp
+static bool Array_SampleWeightedFromStream(
+    const TArray<int32>& TargetArray,
+    const TArray<float>& Weights,
+    int32 Count,
+    bool bWithReplacement,
+    FRandomStream& RandomStream,
+    TArray<int32>& OutArray);
+```
+
+Uses the same rules as `Sample Weighted Array`, but advances the supplied random stream. Equal seeds and stream states produce equal samples.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| TargetArray | `Wildcard Array` | The array to sample. |
+| Weights | `TArray<float>` | The selection weight for each source index. |
+| Count | `int32` | The requested output size. |
+| bWithReplacement | `bool` | Allows the same source index to be selected more than once. |
+| RandomStream | `FRandomStream` | The stream used for selection. Its state advances. |
+| OutArray | `Wildcard Array` | The sampled values. |
+
+**Returns:** False when `Count` is negative, the array lengths differ, or no entry has a positive weight for a non-empty request.
+
 ## Get Array Page
 **Type:** Blueprint Pure &nbsp;|&nbsp; **Category:** `Directive Utilities|Array`
 

@@ -7,14 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-07-18
+
 ### Added
 - Array sampling with optional replacement, seeded sampling, zero-based pagination, and natural sorting for string and name arrays.
+- Weighted array sampling with optional replacement and deterministic random-stream support.
+- Cancellable duration updates and fixed-count interval repeats for runtime Blueprints.
+- Typed runtime queries for world type, build configuration, and build target.
 - Editor slow tasks with progress, cancellation checks, explicit finish, and automatic cleanup when the task object is destroyed.
 - Editor notifications with neutral, success, warning, and failure states.
 - Read-only asset audits for unreferenced candidates, missing references, dependency cycles, disk use, dependency counts, referencer counts, primary assets, and CSV export.
 - Read-only Blueprint inspection by compile status, parent class, interface, component class, and unused variables.
 - Undoable actor alignment, distribution, and surface snapping with explicit actor inputs and changed/skipped results.
 - Automation coverage for the new runtime and editor nodes.
+- Runtime flow tests and weighted sampling benchmarks across varied collection sizes and sample counts.
+- A local runtime test host that runs automation in Unreal Editor and a packaged Development game without changing the released plugin descriptor.
 
 ### Changed
 - Duplicate removal, distinct copies, and most-common lookup use property hashes when Unreal exposes them.
@@ -29,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Array slice, distinct, sampling, and pagination functions now support using the same array as both input and output.
 - Generic array outputs reject mismatched element types without modifying the destination array.
+- Weighted sampling without replacement stays unique across the full range of finite float weights.
 
 ## [2.0.2] - 2026-07-15
 

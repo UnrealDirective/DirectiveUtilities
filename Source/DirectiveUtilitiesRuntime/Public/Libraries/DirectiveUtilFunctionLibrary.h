@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
+#include "Types/DirectiveUtilTypes.h"
 #include "DirectiveUtilFunctionLibrary.generated.h"
 
 /**
@@ -76,6 +77,28 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "Directive Utilities|Utility")
 	static bool IsRunningInEditor();
+
+	/**
+	 * Gets the type of world associated with the supplied context.
+	 * @param WorldContextObject Object used to resolve the current world.
+	 * @returns The resolved world type, or Unknown when the context has no world.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Directive Utilities|Utility", meta = (WorldContext = "WorldContextObject"))
+	static EDirectiveUtilWorldType GetWorldType(const UObject* WorldContextObject);
+
+	/**
+	 * Gets the build configuration of the running application.
+	 * @returns The active build configuration.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Directive Utilities|Utility", meta = (BlueprintThreadSafe))
+	static EDirectiveUtilBuildConfiguration GetBuildConfigurationType();
+
+	/**
+	 * Gets the build target type of the running application.
+	 * @returns The active build target type.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Directive Utilities|Utility", meta = (BlueprintThreadSafe))
+	static EDirectiveUtilBuildTargetType GetBuildTargetType();
 
 	/**
 	 * Checks whether a switch (e.g. "MySwitch" matching "-MySwitch") was passed on the

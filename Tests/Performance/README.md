@@ -1,6 +1,6 @@
 # Runtime performance tests
 
-`Performance.DirectiveUtilities.Runtime` records median, minimum, and maximum execution times for array operations, natural sorting, medians, and string matching. The workloads vary collection size, duplicate density, sampling ratio, page size, rotation distance, input order, and candidate count. Performance measurements are informational and do not use fixed pass or fail thresholds.
+`Performance.DirectiveUtilities.Runtime` records median, minimum, and maximum execution times for array operations, weighted sampling, natural sorting, medians, and string matching. The workloads vary collection size, duplicate density, sampling ratio, page size, rotation distance, input order, and candidate count. Performance measurements are informational and do not use fixed pass or fail thresholds.
 
 The project used to run the suite must load the current source version of Directive Utilities. Build its Editor target after each implementation change before running the benchmark.
 

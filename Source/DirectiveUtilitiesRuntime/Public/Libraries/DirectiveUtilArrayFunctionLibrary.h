@@ -195,6 +195,31 @@ public:
 	static void Array_SampleFromStream(const TArray<int32>& TargetArray, int32 Count, bool bWithReplacement, UPARAM(ref) FRandomStream& RandomStream, TArray<int32>& OutArray);
 
 	/**
+	 * Returns randomly selected elements using per-element weights.
+	 * @param TargetArray The array to sample.
+	 * @param Weights The selection weight for each source element.
+	 * @param Count The requested number of elements.
+	 * @param bWithReplacement Whether the same source element can be selected more than once.
+	 * @param OutArray The sampled elements.
+	 * @returns True when the inputs were valid and the sample was produced.
+	 */
+	UFUNCTION(BlueprintCallable, CustomThunk, meta=(DisplayName = "Sample Weighted Array", ArrayParm = "TargetArray,OutArray", ArrayTypeDependentParams = "OutArray"), Category="Directive Utilities|Array")
+	static bool Array_SampleWeighted(const TArray<int32>& TargetArray, const TArray<float>& Weights, int32 Count, bool bWithReplacement, TArray<int32>& OutArray);
+
+	/**
+	 * Returns randomly selected elements using per-element weights and a random stream.
+	 * @param TargetArray The array to sample.
+	 * @param Weights The selection weight for each source element.
+	 * @param Count The requested number of elements.
+	 * @param bWithReplacement Whether the same source element can be selected more than once.
+	 * @param RandomStream The stream used to select elements.
+	 * @param OutArray The sampled elements.
+	 * @returns True when the inputs were valid and the sample was produced.
+	 */
+	UFUNCTION(BlueprintCallable, CustomThunk, meta=(DisplayName = "Sample Weighted Array from Stream", ArrayParm = "TargetArray,OutArray", ArrayTypeDependentParams = "OutArray"), Category="Directive Utilities|Array")
+	static bool Array_SampleWeightedFromStream(const TArray<int32>& TargetArray, const TArray<float>& Weights, int32 Count, bool bWithReplacement, UPARAM(ref) FRandomStream& RandomStream, TArray<int32>& OutArray);
+
+	/**
 	 * Returns one zero-based page from the array.
 	 * @param TargetArray The array to read.
 	 * @param PageIndex The zero-based page index.
@@ -236,6 +261,7 @@ public:
 	static int32 GenericArray_CountOccurrences(const void* TargetArray, const FArrayProperty* ArrayProperty, const void* ItemToCount);
 	static bool GenericArray_GetMostCommon(const void* TargetArray, const FArrayProperty* ArrayProperty, void* OutItemPtr, int32* OutCount);
 	static void GenericArray_Sample(const void* TargetArray, const FArrayProperty* TargetArrayProperty, int32 Count, bool bWithReplacement, FRandomStream* RandomStream, void* OutArray, const FArrayProperty* OutArrayProperty);
+	static bool GenericArray_SampleWeighted(const void* TargetArray, const FArrayProperty* TargetArrayProperty, const TArray<float>& Weights, int32 Count, bool bWithReplacement, FRandomStream* RandomStream, void* OutArray, const FArrayProperty* OutArrayProperty);
 	static bool GenericArray_GetPage(const void* TargetArray, const FArrayProperty* TargetArrayProperty, int32 PageIndex, int32 PageSize, void* OutArray, const FArrayProperty* OutArrayProperty, int32* OutPageCount);
 
 	/*~
@@ -815,6 +841,85 @@ public:
 		P_FINISH;
 		P_NATIVE_BEGIN;
 		GenericArray_Sample(SourceArrayAddr, SourceArrayProperty, Count, bWithReplacement, &RandomStream, OutArrayAddr, OutArrayProperty);
+		P_NATIVE_END;
+	}
+
+	DECLARE_FUNCTION(execArray_SampleWeighted)
+	{
+		Stack.MostRecentProperty = nullptr;
+		Stack.StepCompiledIn<FArrayProperty>(nullptr);
+		const void* SourceArrayAddr = Stack.MostRecentPropertyAddress;
+		const FArrayProperty* SourceArrayProperty = CastField<FArrayProperty>(Stack.MostRecentProperty);
+		if (!SourceArrayProperty)
+		{
+			Stack.bArrayContextFailed = true;
+			return;
+		}
+		P_GET_TARRAY_REF(float, Weights);
+		P_GET_PROPERTY(FIntProperty, Count);
+		P_GET_UBOOL(bWithReplacement);
+
+		Stack.MostRecentProperty = nullptr;
+		Stack.StepCompiledIn<FArrayProperty>(nullptr);
+		void* OutArrayAddr = Stack.MostRecentPropertyAddress;
+		const FArrayProperty* OutArrayProperty = CastField<FArrayProperty>(Stack.MostRecentProperty);
+		if (!OutArrayProperty)
+		{
+			Stack.bArrayContextFailed = true;
+			return;
+		}
+
+		P_FINISH;
+		P_NATIVE_BEGIN;
+		*static_cast<bool*>(RESULT_PARAM) = GenericArray_SampleWeighted(
+			SourceArrayAddr,
+			SourceArrayProperty,
+			Weights,
+			Count,
+			bWithReplacement,
+			nullptr,
+			OutArrayAddr,
+			OutArrayProperty);
+		P_NATIVE_END;
+	}
+
+	DECLARE_FUNCTION(execArray_SampleWeightedFromStream)
+	{
+		Stack.MostRecentProperty = nullptr;
+		Stack.StepCompiledIn<FArrayProperty>(nullptr);
+		const void* SourceArrayAddr = Stack.MostRecentPropertyAddress;
+		const FArrayProperty* SourceArrayProperty = CastField<FArrayProperty>(Stack.MostRecentProperty);
+		if (!SourceArrayProperty)
+		{
+			Stack.bArrayContextFailed = true;
+			return;
+		}
+		P_GET_TARRAY_REF(float, Weights);
+		P_GET_PROPERTY(FIntProperty, Count);
+		P_GET_UBOOL(bWithReplacement);
+		P_GET_STRUCT_REF(FRandomStream, RandomStream);
+
+		Stack.MostRecentProperty = nullptr;
+		Stack.StepCompiledIn<FArrayProperty>(nullptr);
+		void* OutArrayAddr = Stack.MostRecentPropertyAddress;
+		const FArrayProperty* OutArrayProperty = CastField<FArrayProperty>(Stack.MostRecentProperty);
+		if (!OutArrayProperty)
+		{
+			Stack.bArrayContextFailed = true;
+			return;
+		}
+
+		P_FINISH;
+		P_NATIVE_BEGIN;
+		*static_cast<bool*>(RESULT_PARAM) = GenericArray_SampleWeighted(
+			SourceArrayAddr,
+			SourceArrayProperty,
+			Weights,
+			Count,
+			bWithReplacement,
+			&RandomStream,
+			OutArrayAddr,
+			OutArrayProperty);
 		P_NATIVE_END;
 	}
 

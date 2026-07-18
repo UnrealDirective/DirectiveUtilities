@@ -7,6 +7,7 @@
 #include "DirectiveUtilTestObject.generated.h"
 
 class UWorld;
+class UGameInstance;
 
 USTRUCT()
 struct FDirectiveUtilCollisionValue
@@ -108,6 +109,36 @@ public:
 	int32 HitCount = 0;
 
 	UPROPERTY()
+	int32 UpdatedCount = 0;
+
+	UPROPERTY()
+	int32 IterationCount = 0;
+
+	UPROPERTY()
+	float LastElapsedTime = 0.0f;
+
+	UPROPERTY()
+	float LastDeltaTime = 0.0f;
+
+	UPROPERTY()
+	float LastAlpha = 0.0f;
+
+	UPROPERTY()
+	TArray<int32> IterationIndices;
+
+	UPROPERTY()
+	TArray<int32> IterationRemaining;
+
+	UPROPERTY()
+	TArray<float> UpdateElapsedTimes;
+
+	UPROPERTY()
+	TArray<float> UpdateDeltaTimes;
+
+	UPROPERTY()
+	TArray<float> UpdateAlphas;
+
+	UPROPERTY()
 	bool bLastSuccess = false;
 
 	UPROPERTY()
@@ -121,6 +152,9 @@ public:
 
 	UPROPERTY()
 	TObjectPtr<UWorld> ScenarioWorld = nullptr;
+
+	UPROPERTY()
+	TObjectPtr<UGameInstance> ScenarioGameInstance = nullptr;
 
 	UFUNCTION()
 	void OnCompleted() { bCompleted = true; ++CompletedCount; }
@@ -145,4 +179,11 @@ public:
 
 	UFUNCTION()
 	void OnBoolCompleted(bool bSuccess) { bCompleted = true; ++CompletedCount; bLastSuccess = bSuccess; }
+
+	UFUNCTION()
+	void OnDurationUpdated(float ElapsedTime, float DeltaTime, float Alpha) { ++UpdatedCount; LastElapsedTime = ElapsedTime; LastDeltaTime = DeltaTime; LastAlpha = Alpha; UpdateElapsedTimes.Add(ElapsedTime); UpdateDeltaTimes.Add(DeltaTime); UpdateAlphas.Add(Alpha); }
+
+	UFUNCTION()
+	void OnRepeatIteration(int32 Index, int32 Remaining) { ++IterationCount; IterationIndices.Add(Index); IterationRemaining.Add(Remaining); }
+
 };

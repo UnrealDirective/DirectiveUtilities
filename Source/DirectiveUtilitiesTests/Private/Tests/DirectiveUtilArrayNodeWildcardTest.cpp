@@ -117,6 +117,8 @@ bool FDirectiveUtilArrayNodeWildcardTest::RunTest(const FString& Parameters)
 		{GET_FUNCTION_NAME_CHECKED(UDirectiveUtilArrayFunctionLibrary, Array_GetMostCommon), {{TEXT("OutItem"), EPinContainerType::None}}},
 		{GET_FUNCTION_NAME_CHECKED(UDirectiveUtilArrayFunctionLibrary, Array_Sample), {{TEXT("OutArray"), EPinContainerType::Array}}},
 		{GET_FUNCTION_NAME_CHECKED(UDirectiveUtilArrayFunctionLibrary, Array_SampleFromStream), {{TEXT("OutArray"), EPinContainerType::Array}}},
+		{GET_FUNCTION_NAME_CHECKED(UDirectiveUtilArrayFunctionLibrary, Array_SampleWeighted), {{TEXT("OutArray"), EPinContainerType::Array}}},
+		{GET_FUNCTION_NAME_CHECKED(UDirectiveUtilArrayFunctionLibrary, Array_SampleWeightedFromStream), {{TEXT("OutArray"), EPinContainerType::Array}}},
 		{GET_FUNCTION_NAME_CHECKED(UDirectiveUtilArrayFunctionLibrary, Array_GetPage), {{TEXT("OutArray"), EPinContainerType::Array}}}
 	};
 

@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Kismet/BlueprintAsyncActionBase.h"
+#include "Engine/CancellableAsyncAction.h"
 #include "Engine/TimerHandle.h"
 #include "DirectiveUtilTask_Delay.generated.h"
 
@@ -11,10 +11,10 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnDelayCompleted);
 
 /**
  * DirectiveUtilTask_Delay
- * A cancellable delay that can be ended early by calling EndTask.
+ * A cancellable delay.
  */
 UCLASS(BlueprintType, meta=(ExposedAsyncProxy = AsyncTask, DisplayName="Cancellable Delay"))
-class DIRECTIVEUTILITIESRUNTIME_API UDirectiveUtilTask_Delay : public UBlueprintAsyncActionBase
+class DIRECTIVEUTILITIESRUNTIME_API UDirectiveUtilTask_Delay : public UCancellableAsyncAction
 {
 	GENERATED_BODY()
 
@@ -23,7 +23,7 @@ public:
 	/**
 	 * Starts a cancellable delay.
 	 * When the delay has completed, the Completed delegate is called.
-	 * Call EndTask to cancel the delay before it completes.
+	 * Call Cancel to stop the delay before it completes.
 	 *
 	 * @param WorldContextObject The world context object.
 	 * @param Duration The duration of the delay in seconds. Non-finite and non-positive values complete on the next timer tick.
@@ -38,14 +38,13 @@ public:
 			))
 	static UDirectiveUtilTask_Delay* CancellableDelay(UObject* WorldContextObject, float Duration);
 
-	/**
-	 * Ends the delay early.
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Directive Utilities|FlowControl")
+	UFUNCTION(BlueprintCallable, meta=(DeprecatedFunction, DeprecationMessage="Use Cancel instead."), Category = "Directive Utilities|FlowControl")
 	void EndTask();
 	virtual void Activate() override;
+	virtual void Cancel() override;
+	virtual bool IsActive() const override;
+	virtual bool ShouldBroadcastDelegates() const override;
 
-	// The delegate called when the delay has completed.
 	UPROPERTY(BlueprintAssignable)
 	FOnDelayCompleted Completed;
 
@@ -55,6 +54,7 @@ protected:
 	TObjectPtr<UObject> WorldContextObject;
 
 	float Duration = 0.0f;
+	bool bFinished = false;
 	FTimerHandle TimerHandle;
 
 	void OnDelayComplete();

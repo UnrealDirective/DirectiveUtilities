@@ -1,6 +1,6 @@
 # Directive Utilities Documentation
 
-This folder is the source-controlled documentation for Directive Utilities. Use the pages here when you need setup steps, compatibility details, or exact node behavior for the branch or tag you have checked out. The [udcore.unrealdirective.com](https://udcore.unrealdirective.com/) site points to these docs.
+This folder contains setup steps, compatibility details, and node documentation for the checked-out branch or tag.
 
 ## Choose Your Path
 
@@ -19,7 +19,7 @@ This folder is the source-controlled documentation for Directive Utilities. Use 
 Per-library reference for every Blueprint-exposed node. Each page lists the module, header, Blueprint category, C++ signature, parameters, outputs, and return behavior.
 
 ### Runtime
-- [Function Library](Nodes/FunctionLibrary.md) - project, clipboard, class, and command-line helpers.
+- [Function Library](Nodes/FunctionLibrary.md) - runtime context, project, clipboard, class, and command-line helpers.
 - [Array Function Library](Nodes/ArrayFunctionLibrary.md) - wildcard array helpers.
 - [Map Function Library](Nodes/MapFunctionLibrary.md) - wildcard map helpers.
 - [String Function Library](Nodes/StringFunctionLibrary.md) - validation, filtering, matching, formatting, hashing, and case conversion.
@@ -29,7 +29,7 @@ Per-library reference for every Blueprint-exposed node. Each page lists the modu
 - [Gameplay Tag Function Library](Nodes/GameplayTagFunctionLibrary.md) - tag hierarchy helpers and registry search.
 - [Save Game Function Library](Nodes/SaveGameFunctionLibrary.md) - save-slot enumeration, timestamps, byte serialization, and slot management.
 - [Input Function Library](Nodes/InputFunctionLibrary.md) - Enhanced Input helpers.
-- [Async Tasks](Nodes/AsyncTasks.md) - Delay, Async Load Asset, Async Trace, Move To Location, and Move To Actor.
+- [Async Tasks](Nodes/AsyncTasks.md) - timed flow, asset loading, traces, and movement.
 
 ### Editor
 - [Editor Asset Library](Nodes/EditorAssetLibrary.md) - asset query and management helpers.

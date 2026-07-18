@@ -1,5 +1,7 @@
 #include "Libraries/DirectiveUtilArrayFunctionLibrary.h"
 #include "Tests/DirectiveUtilTestObject.h"
+
+#include <limits>
 #include "Misc/AutomationTest.h"
 
 namespace
@@ -319,6 +321,282 @@ bool FDirectiveUtilArrayFunctionLibraryTest::RunTest(const FString& Parameters)
 	UDirectiveUtilArrayFunctionLibrary::GenericArray_Sample(&TestObject->TestArray, ArrayProperty, 0, false, nullptr, &SampledValues, ArrayProperty);
 	TestTrue("Sampling zero values should return an empty array", SampledValues.IsEmpty());
 
+	const TArray<float> DeterministicWeights = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
+	TArray<int32> WeightedSample;
+	TArray<int32> RepeatedWeightedSample;
+	FRandomStream FirstWeightedStream(90210);
+	FRandomStream SecondWeightedStream(90210);
+	TestTrue(
+		"Weighted sampling should accept matching inputs",
+		UDirectiveUtilArrayFunctionLibrary::GenericArray_SampleWeighted(
+			&TestObject->TestArray,
+			ArrayProperty,
+			DeterministicWeights,
+			4,
+			true,
+			&FirstWeightedStream,
+			&WeightedSample,
+			ArrayProperty));
+	TestTrue(
+		"Weighted sampling from a stream should accept matching inputs",
+		UDirectiveUtilArrayFunctionLibrary::GenericArray_SampleWeighted(
+			&TestObject->TestArray,
+			ArrayProperty,
+			DeterministicWeights,
+			4,
+			true,
+			&SecondWeightedStream,
+			&RepeatedWeightedSample,
+			ArrayProperty));
+	TestEqual("Weighted sampling from a stream should be deterministic", RepeatedWeightedSample, WeightedSample);
+
+	FRandomStream FirstUniqueWeightedStream(31415);
+	FRandomStream SecondUniqueWeightedStream(31415);
+	TestTrue(
+		"Weighted sampling without replacement should accept matching inputs",
+		UDirectiveUtilArrayFunctionLibrary::GenericArray_SampleWeighted(
+			&TestObject->TestArray,
+			ArrayProperty,
+			DeterministicWeights,
+			5,
+			false,
+			&FirstUniqueWeightedStream,
+			&WeightedSample,
+			ArrayProperty));
+	TestTrue(
+		"Repeated weighted sampling without replacement should accept matching inputs",
+		UDirectiveUtilArrayFunctionLibrary::GenericArray_SampleWeighted(
+			&TestObject->TestArray,
+			ArrayProperty,
+			DeterministicWeights,
+			5,
+			false,
+			&SecondUniqueWeightedStream,
+			&RepeatedWeightedSample,
+			ArrayProperty));
+	TestEqual("Weighted sampling without replacement should be deterministic", RepeatedWeightedSample, WeightedSample);
+	TestEqual("Weighted sampling without replacement should select each available value once", TSet<int32>(WeightedSample).Num(), 5);
+
+	FRandomStream UnchangedWeightedStream(8675309);
+	const int32 InitialWeightedSeed = UnchangedWeightedStream.GetCurrentSeed();
+	TestTrue(
+		"A zero weighted sample should succeed",
+		UDirectiveUtilArrayFunctionLibrary::GenericArray_SampleWeighted(
+			&TestObject->TestArray,
+			ArrayProperty,
+			DeterministicWeights,
+			0,
+			false,
+			&UnchangedWeightedStream,
+			&WeightedSample,
+			ArrayProperty));
+	TestEqual("A zero weighted sample should not advance its random stream", UnchangedWeightedStream.GetCurrentSeed(), InitialWeightedSeed);
+
+	TestObject->TestArray = {0, 1};
+	FRandomStream DistributionStream(1187);
+	TestTrue(
+		"Weighted sampling should accept proportional weights",
+		UDirectiveUtilArrayFunctionLibrary::GenericArray_SampleWeighted(
+			&TestObject->TestArray,
+			ArrayProperty,
+			TArray<float>({1.0f, 9.0f}),
+			10000,
+			true,
+			&DistributionStream,
+			&WeightedSample,
+			ArrayProperty));
+	int32 HeavySelectionCount = 0;
+	for (const int32 Value : WeightedSample)
+	{
+		HeavySelectionCount += Value == 1 ? 1 : 0;
+	}
+	TestTrue("Weighted sampling should follow the supplied proportions", HeavySelectionCount > 8500 && HeavySelectionCount < 9500);
+
+	TestObject->TestArray = {10, 20, 30, 40, 50};
+	const TArray<float> SparseWeights = {
+		0.0f,
+		1.0f,
+		-1.0f,
+		std::numeric_limits<float>::quiet_NaN(),
+		std::numeric_limits<float>::infinity()
+	};
+	FRandomStream SparseStream(17);
+	TestTrue(
+		"Weighted sampling should ignore non-positive and non-finite weights",
+		UDirectiveUtilArrayFunctionLibrary::GenericArray_SampleWeighted(
+			&TestObject->TestArray,
+			ArrayProperty,
+			SparseWeights,
+			8,
+			true,
+			&SparseStream,
+			&WeightedSample,
+			ArrayProperty));
+	TestEqual("Weighted sampling should select the only positive-weight value", WeightedSample, TArray<int32>({20, 20, 20, 20, 20, 20, 20, 20}));
+
+	const TArray<float> TwoPositiveWeights = {1.0f, 0.0f, 2.0f, 0.0f, 0.0f};
+	FRandomStream UniqueWeightedStream(44);
+	TestTrue(
+		"Weighted sampling without replacement should succeed",
+		UDirectiveUtilArrayFunctionLibrary::GenericArray_SampleWeighted(
+			&TestObject->TestArray,
+			ArrayProperty,
+			TwoPositiveWeights,
+			8,
+			false,
+			&UniqueWeightedStream,
+			&WeightedSample,
+			ArrayProperty));
+	TestEqual("Weighted sampling without replacement should clamp to positive-weight entries", WeightedSample.Num(), 2);
+	TestEqual("Weighted sampling without replacement should not repeat source indices", TSet<int32>(WeightedSample).Num(), 2);
+	TestTrue("Weighted sampling without replacement should include the first weighted value", WeightedSample.Contains(10));
+	TestTrue("Weighted sampling without replacement should include the second weighted value", WeightedSample.Contains(30));
+
+	WeightedSample = {999};
+	TestFalse(
+		"Weighted sampling should reject a mismatched weights array",
+		UDirectiveUtilArrayFunctionLibrary::GenericArray_SampleWeighted(
+			&TestObject->TestArray,
+			ArrayProperty,
+			TArray<float>({1.0f}),
+			1,
+			false,
+			nullptr,
+			&WeightedSample,
+			ArrayProperty));
+	TestTrue("Weighted sampling should clear output after a weights mismatch", WeightedSample.IsEmpty());
+
+	TestFalse(
+		"Weighted sampling should reject a negative count",
+		UDirectiveUtilArrayFunctionLibrary::GenericArray_SampleWeighted(
+			&TestObject->TestArray,
+			ArrayProperty,
+			TwoPositiveWeights,
+			-1,
+			false,
+			nullptr,
+			&WeightedSample,
+			ArrayProperty));
+	TestTrue("Weighted sampling should clear output after a negative count", WeightedSample.IsEmpty());
+
+	TestTrue(
+		"Weighted sampling should accept a zero count",
+		UDirectiveUtilArrayFunctionLibrary::GenericArray_SampleWeighted(
+			&TestObject->TestArray,
+			ArrayProperty,
+			TwoPositiveWeights,
+			0,
+			false,
+			nullptr,
+			&WeightedSample,
+			ArrayProperty));
+	TestTrue("Weighted sampling should return an empty zero-count result", WeightedSample.IsEmpty());
+
+	const TArray<float> EmptyWeights = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+	TestFalse(
+		"Weighted sampling should reject a positive count when all weights are zero",
+		UDirectiveUtilArrayFunctionLibrary::GenericArray_SampleWeighted(
+			&TestObject->TestArray,
+			ArrayProperty,
+			EmptyWeights,
+			1,
+			false,
+			nullptr,
+			&WeightedSample,
+			ArrayProperty));
+	TestTrue("Weighted sampling should clear output when no selectable entries exist", WeightedSample.IsEmpty());
+
+	TestObject->TestArray.Empty();
+	TestTrue(
+		"Weighted sampling should accept an empty source for a zero count",
+		UDirectiveUtilArrayFunctionLibrary::GenericArray_SampleWeighted(
+			&TestObject->TestArray,
+			ArrayProperty,
+			TArray<float>(),
+			0,
+			false,
+			nullptr,
+			&WeightedSample,
+			ArrayProperty));
+	TestFalse(
+		"Weighted sampling should reject a positive count for an empty source",
+		UDirectiveUtilArrayFunctionLibrary::GenericArray_SampleWeighted(
+			&TestObject->TestArray,
+			ArrayProperty,
+			TArray<float>(),
+			1,
+			false,
+			nullptr,
+			&WeightedSample,
+			ArrayProperty));
+	TestTrue("A failed empty weighted sample should leave an empty output", WeightedSample.IsEmpty());
+
+	TestObject->TestArray = {10, 20, 30, 40};
+	FRandomStream LeadingZeroStream(101);
+	TestTrue(
+		"Weighted sampling should handle leading zero weights",
+		UDirectiveUtilArrayFunctionLibrary::GenericArray_SampleWeighted(
+			&TestObject->TestArray,
+			ArrayProperty,
+			TArray<float>({0.0f, 0.0f, 0.0f, 1.0f}),
+			4,
+			true,
+			&LeadingZeroStream,
+			&WeightedSample,
+			ArrayProperty));
+	TestEqual("Leading zero weights should not select an unavailable value", WeightedSample, TArray<int32>({40, 40, 40, 40}));
+
+	FRandomStream ExtremeWeightStream(2026);
+	TestTrue(
+		"Weighted sampling should handle maximum finite weights",
+		UDirectiveUtilArrayFunctionLibrary::GenericArray_SampleWeighted(
+			&TestObject->TestArray,
+			ArrayProperty,
+			TArray<float>({std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), 0.0f, 0.0f}),
+			2,
+			false,
+			&ExtremeWeightStream,
+			&WeightedSample,
+			ArrayProperty));
+	TestEqual("Maximum finite weights should return both selectable values", WeightedSample.Num(), 2);
+	TestTrue("Maximum finite weights should include the first value", WeightedSample.Contains(10));
+	TestTrue("Maximum finite weights should include the second value", WeightedSample.Contains(20));
+
+	TestObject->TestArray = {10, 20, 30};
+	FRandomStream MixedRangeWeightStream(2027);
+	TestTrue(
+		"Weighted sampling should handle mixed finite weight ranges",
+		UDirectiveUtilArrayFunctionLibrary::GenericArray_SampleWeighted(
+			&TestObject->TestArray,
+			ArrayProperty,
+			TArray<float>({std::numeric_limits<float>::max(), 1.0f, 2.0f}),
+			3,
+			false,
+			&MixedRangeWeightStream,
+			&WeightedSample,
+			ArrayProperty));
+	TestEqual("Mixed finite weights should return every selectable value", WeightedSample.Num(), 3);
+	TestEqual("Mixed finite weights should not repeat values", TSet<int32>(WeightedSample).Num(), 3);
+	TestTrue("Mixed finite weights should include the first value", WeightedSample.Contains(10));
+	TestTrue("Mixed finite weights should include the second value", WeightedSample.Contains(20));
+	TestTrue("Mixed finite weights should include the third value", WeightedSample.Contains(30));
+
+	TestObject->TestArray = {1, 2, 3, 4};
+	FRandomStream AliasedWeightedStream(81);
+	TestTrue(
+		"Weighted sampling should support the source array as output",
+		UDirectiveUtilArrayFunctionLibrary::GenericArray_SampleWeighted(
+			&TestObject->TestArray,
+			ArrayProperty,
+			TArray<float>({1.0f, 1.0f, 1.0f, 1.0f}),
+			2,
+			false,
+			&AliasedWeightedStream,
+			&TestObject->TestArray,
+			ArrayProperty));
+	TestEqual("Aliased weighted sampling should return the requested count", TestObject->TestArray.Num(), 2);
+
+	TestObject->TestArray = {10, 20, 30, 40, 50};
 	TArray<int32> Page;
 	int32 PageCount = 0;
 	TestTrue("GetPage should return an available page", UDirectiveUtilArrayFunctionLibrary::GenericArray_GetPage(&TestObject->TestArray, ArrayProperty, 1, 2, &Page, ArrayProperty, &PageCount));
@@ -374,6 +652,25 @@ bool FDirectiveUtilArrayFunctionLibraryTest::RunTest(const FString& Parameters)
 	TestNotNull("Text array property should be available", TextArrayProperty);
 	TestNotNull("Collision array property should be available", CollisionArrayProperty);
 	TestNotNull("Object array property should be available", ObjectArrayProperty);
+
+	TestObject->TestStringArray = {TEXT("Zero"), TEXT("Selected"), TEXT("Never")};
+	TArray<FString> WeightedStrings;
+	FRandomStream WeightedStringStream(55);
+	TestTrue(
+		"Weighted sampling should preserve non-trivial array values",
+		UDirectiveUtilArrayFunctionLibrary::GenericArray_SampleWeighted(
+			&TestObject->TestStringArray,
+			StringArrayProperty,
+			TArray<float>({0.0f, 1.0f, 0.0f}),
+			3,
+			true,
+			&WeightedStringStream,
+			&WeightedStrings,
+			StringArrayProperty));
+	TestEqual(
+		"Weighted sampling should copy the selected non-trivial value",
+		WeightedStrings,
+		TArray<FString>({TEXT("Selected"), TEXT("Selected"), TEXT("Selected")}));
 
 	TestObject->TestStringArray = {TEXT("One"), TEXT("Two"), TEXT("Three"), TEXT("Four")};
 	UDirectiveUtilArrayFunctionLibrary::GenericArray_Rotate(&TestObject->TestStringArray, StringArrayProperty, 2);
@@ -432,6 +729,18 @@ bool FDirectiveUtilArrayFunctionLibraryTest::RunTest(const FString& Parameters)
 		&TestObject->TestStringArray,
 		StringArrayProperty);
 	TestEqual("Slice should reject mismatched array types without changing output", TestObject->TestStringArray, TArray<FString>({TEXT("unchanged")}));
+	TestFalse(
+		"Weighted sampling should reject mismatched output types",
+		UDirectiveUtilArrayFunctionLibrary::GenericArray_SampleWeighted(
+			&TestObject->TestArray,
+			ArrayProperty,
+			TArray<float>({1.0f, 1.0f, 1.0f}),
+			1,
+			false,
+			nullptr,
+			&TestObject->TestStringArray,
+			StringArrayProperty));
+	TestEqual("Weighted sampling should leave a mismatched output unchanged", TestObject->TestStringArray, TArray<FString>({TEXT("unchanged")}));
 
 	const FText AlphaText = FText::FromString(TEXT("Alpha"));
 	const FText BetaText = FText::FromString(TEXT("Beta"));

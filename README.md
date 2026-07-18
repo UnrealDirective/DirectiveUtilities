@@ -11,13 +11,14 @@ Version 2.0 replaces UDCore 1.x. Existing Blueprint assets migrate through bundl
 
 | Area | Utilities |
 |------|-----------|
-| Arrays and maps | Wildcard container nodes for indexing, lookup, removal, merging, sampling, pagination, natural sorting, and duplicate handling. |
+| Arrays and maps | Wildcard container nodes for indexing, lookup, removal, merging, weighted sampling, pagination, natural sorting, and duplicate handling. |
 | Strings, text, and regex | Validation, filtering, case conversion, fuzzy matching, hashing, encoding, capture groups, and replacement. |
 | Math | Easing, weighted random selection, rounding, angle helpers, Perlin noise, formatting, and array statistics. |
 | Gameplay Tags | Hierarchy navigation, ancestry checks, sibling queries, and registry search. |
 | Save games | Slot enumeration, timestamps, byte serialization, validation, deletion, and renaming. |
 | Enhanced Input | Subsystem access and mapping-context operations. |
-| Async work | Delay, asset and class loading, traces, and navigation movement. |
+| Async work | Timed flow, asset and class loading, traces, and navigation movement. |
+| Runtime context | Typed world, build configuration, and build target queries. |
 | Editor actors | Actor filters, selection tools, viewport controls, layout operations, surface snapping, material operations, and mesh queries. |
 | Editor assets | Asset Registry queries, read-only content audits, and asset management helpers for editor scripts. |
 | Editor Blueprints | Read-only searches for compile status, inheritance, interfaces, components, and unused variables. |
@@ -40,7 +41,7 @@ Module boundaries keep editor dependencies out of packaged games.
 |--------|-----|
 | `DirectiveUtilitiesRuntime` | Runtime libraries and async actions. This is the only module that ships in packaged games. |
 | `DirectiveUtilitiesEditor` | Asset and actor tools for editor targets. |
-| `DirectiveUtilitiesTests` | Editor automation tests. |
+| `DirectiveUtilitiesTests` | Automation tests. The released descriptor limits this module to editor targets. |
 
 See [Compatibility](Documentation/Compatibility.md) for the support policy and build-target details.
 
@@ -105,11 +106,11 @@ Editor modules and editor-only targets can depend on `DirectiveUtilitiesEditor`.
 - [Migration 2.0](Documentation/Migration-2.0.md) maps UDCore names to their Directive Utilities replacements.
 - [Changelog](CHANGELOG.md) tracks releases and behavior changes.
 
-The hosted documentation is available at [udcore.unrealdirective.com](https://udcore.unrealdirective.com/).
-
 ## Contributing
 
 When behavior changes, update its implementation and tests together. Revise the matching page under `Documentation/Nodes/` in the same pull request, then build the plugin for each affected engine version.
+
+Use the local [runtime test host](Tests/RuntimeHost/README.md) to run the automation suite in both Unreal Editor and a packaged Development game. Generated projects and reports are written under `Build/RuntimeHost`.
 
 Open pull requests against `dev` and describe any Blueprint compatibility impact.
 

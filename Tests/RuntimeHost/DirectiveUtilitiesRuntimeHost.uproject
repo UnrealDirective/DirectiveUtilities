@@ -1,0 +1,30 @@
+{
+	"FileVersion": 3,
+	"Category": "Tests",
+	"Description": "Packaged runtime test host for Directive Utilities.",
+	"Modules": [
+		{
+			"Name": "DirectiveUtilitiesRuntimeHost",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "DirectiveUtilitiesRuntimeHostTests",
+			"Type": "DeveloperTool",
+			"LoadingPhase": "PostEngineInit",
+			"TargetAllowList": [
+				"Game"
+			]
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "DirectiveUtilities",
+			"Enabled": true
+		},
+		{
+			"Name": "EnhancedInput",
+			"Enabled": true
+		}
+	]
+}

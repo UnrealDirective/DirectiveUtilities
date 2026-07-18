@@ -25,11 +25,28 @@ UDirectiveUtilTask_Delay* UDirectiveUtilTask_Delay::CancellableDelay(UObject* Wo
 
 void UDirectiveUtilTask_Delay::EndTask()
 {
-	if (UWorld* World = GEngine ? GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::ReturnNull) : nullptr)
+	Cancel();
+}
+
+void UDirectiveUtilTask_Delay::Cancel()
+{
+	bFinished = true;
+	if (FTimerManager* TimerManager = GetTimerManager())
 	{
-		World->GetTimerManager().ClearTimer(TimerHandle);
+		TimerManager->ClearTimer(TimerHandle);
 	}
-	SetReadyToDestroy();
+	Completed.Clear();
+	Super::Cancel();
+}
+
+bool UDirectiveUtilTask_Delay::IsActive() const
+{
+	return !bFinished && Super::IsActive();
+}
+
+bool UDirectiveUtilTask_Delay::ShouldBroadcastDelegates() const
+{
+	return !bFinished && Super::ShouldBroadcastDelegates();
 }
 
 void UDirectiveUtilTask_Delay::Activate()
@@ -40,6 +57,7 @@ void UDirectiveUtilTask_Delay::Activate()
 	if (!World)
 	{
 		UE_LOG(LogDirectiveUtil, Warning, TEXT("Cancellable Delay failed to activate. World is null."));
+		bFinished = true;
 		SetReadyToDestroy();
 		return;
 	}
@@ -54,6 +72,10 @@ void UDirectiveUtilTask_Delay::Activate()
 void UDirectiveUtilTask_Delay::OnDelayComplete()
 {
 	UE_LOG(LogDirectiveUtil, Verbose, TEXT("Cancellable Delay completed."));
-	Completed.Broadcast();
+	if (ShouldBroadcastDelegates())
+	{
+		Completed.Broadcast();
+	}
+	bFinished = true;
 	SetReadyToDestroy();
 }
