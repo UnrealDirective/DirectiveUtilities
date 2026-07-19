@@ -2,6 +2,7 @@
 
 #include "Libraries/DirectiveUtilEditorBlueprintLibrary.h"
 
+#include "AssetRegistry/DirectiveUtilAssetRegistry.h"
 #include "AssetRegistry/ARFilter.h"
 #include "AssetRegistry/IAssetRegistry.h"
 #include "Blueprint/BlueprintSupport.h"
@@ -32,10 +33,7 @@ namespace
 			return {};
 		}
 
-		if (AssetRegistry->IsLoadingAssets())
-		{
-			AssetRegistry->WaitForCompletion();
-		}
+		DirectiveUtilitiesEditor::EnsureAssetRegistryScan(*AssetRegistry);
 
 		FARFilter Filter;
 		Filter.ClassPaths.Add(UBlueprint::StaticClass()->GetClassPathName());

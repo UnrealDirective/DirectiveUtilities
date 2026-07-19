@@ -82,6 +82,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $PackageArguments = @(
+    'BuildCookRun',
     "-project=$ProjectFile",
     '-noP4',
     '-platform=Win64',
@@ -102,7 +103,9 @@ if ($LASTEXITCODE -ne 0) {
     throw "Packaged game build failed."
 }
 
-$GameCommand = Get-ChildItem $ArchiveRoot -Filter "DirectiveUtilitiesRuntimeHost.exe" -File -Recurse | Select-Object -First 1
+$GameCommand = Get-ChildItem $ArchiveRoot -Filter "DirectiveUtilitiesRuntimeHost.exe" -File -Recurse |
+    Where-Object { $_.DirectoryName -like "*\Binaries\Win64" } |
+    Select-Object -First 1
 if (-not $GameCommand) {
     throw "Packaged game executable not found under $ArchiveRoot"
 }
@@ -119,8 +122,14 @@ $GameArguments = @(
     '-NullRHI'
 )
 $GameCommandPath = $GameCommand.FullName
-& $GameCommandPath @GameArguments
-if ($LASTEXITCODE -ne 0) {
+$GameArgumentLine = ($GameArguments | ForEach-Object { '"{0}"' -f $_ }) -join ' '
+$GameProcess = Start-Process `
+    -FilePath $GameCommandPath `
+    -ArgumentList $GameArgumentLine `
+    -WorkingDirectory $GameCommand.DirectoryName `
+    -Wait `
+    -PassThru
+if ($GameProcess.ExitCode -ne 0) {
     if (Test-Path $GameLog -PathType Leaf) {
         Get-Content $GameLog -Tail 100
     }

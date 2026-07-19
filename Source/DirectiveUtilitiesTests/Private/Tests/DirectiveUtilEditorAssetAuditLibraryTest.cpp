@@ -2,6 +2,7 @@
 
 #if WITH_EDITOR
 
+#include "AssetRegistry/IAssetRegistry.h"
 #include "Libraries/DirectiveUtilEditorAssetAuditLibrary.h"
 #include "Misc/AutomationTest.h"
 
@@ -17,6 +18,10 @@ bool FDirectiveUtilEditorAssetAuditLibraryTest::RunTest(const FString& Parameter
 
 	const FDirectiveUtilAssetAuditReport Report = UDirectiveUtilEditorAssetAuditLibrary::BuildAssetAuditReport(Options);
 	TestTrue(TEXT("The engine shape scan returns assets"), !Report.Assets.IsEmpty());
+	if (const IAssetRegistry* AssetRegistry = IAssetRegistry::Get())
+	{
+		TestTrue(TEXT("An asset audit starts the initial registry scan"), AssetRegistry->IsSearchAllAssets());
+	}
 
 	for (const FDirectiveUtilAssetAuditEntry& Entry : Report.Assets)
 	{
@@ -40,6 +45,19 @@ bool FDirectiveUtilEditorAssetAuditLibraryTest::RunTest(const FString& Parameter
 	TestTrue(
 		TEXT("Excluded paths return no cycles"),
 		UDirectiveUtilEditorAssetAuditLibrary::FindAssetDependencyCycles(Options).IsEmpty());
+
+	FDirectiveUtilAssetAuditOptions EngineOptions;
+	EngineOptions.PackagePaths = {TEXT("/Engine")};
+	const FDirectiveUtilAssetAuditReport EngineReport = UDirectiveUtilEditorAssetAuditLibrary::BuildAssetAuditReport(EngineOptions);
+	TestTrue(TEXT("A full engine audit returns more than the basic shapes scan"), EngineReport.Assets.Num() > Report.Assets.Num());
+	for (const FDirectiveUtilAssetDependencyCycle& Cycle : EngineReport.DependencyCycles)
+	{
+		TestTrue(TEXT("Dependency cycles contain at least one package"), !Cycle.Packages.IsEmpty());
+		for (int32 Index = 1; Index < Cycle.Packages.Num(); ++Index)
+		{
+			TestTrue(TEXT("Dependency cycle packages are sorted"), Cycle.Packages[Index - 1].LexicalLess(Cycle.Packages[Index]));
+		}
+	}
 
 	return true;
 }

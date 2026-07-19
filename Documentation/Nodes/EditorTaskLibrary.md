@@ -16,7 +16,7 @@ static UDirectiveUtilEditorSlowTask* StartEditorSlowTask(
     bool bCanCancel = false);
 ```
 
-Opens an editor progress dialog and returns its task object. A total of zero or less returns null.
+Opens an editor progress dialog and returns its task object. Invalid totals and attempts to start a second task return null.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|

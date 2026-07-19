@@ -1,13 +1,26 @@
 ﻿#pragma once
 
 #include "CoreMinimal.h"
+#include "UObject/Interface.h"
 #include "UObject/Object.h"
 #include "GameFramework/SaveGame.h"
 #include "Engine/HitResult.h"
+#include "Tasks/DirectiveUtilTask_MoveToLocation.h"
 #include "DirectiveUtilTestObject.generated.h"
 
 class UWorld;
 class UGameInstance;
+
+UINTERFACE()
+class UDirectiveUtilTestInterface : public UInterface
+{
+	GENERATED_BODY()
+};
+
+class IDirectiveUtilTestInterface
+{
+	GENERATED_BODY()
+};
 
 USTRUCT()
 struct FDirectiveUtilCollisionValue
@@ -186,4 +199,56 @@ public:
 	UFUNCTION()
 	void OnRepeatIteration(int32 Index, int32 Remaining) { ++IterationCount; IterationIndices.Add(Index); IterationRemaining.Add(Remaining); }
 
+};
+
+UCLASS()
+class UDirectiveUtilTestMoveToLocationTask : public UDirectiveUtilTask_MoveToLocation
+{
+	GENERATED_BODY()
+
+public:
+	void Configure(AController* InController, const FVector InDestination, const bool bInCheckStuckMovement)
+	{
+		Controller = InController;
+		Destination = InDestination;
+		bCheckStuckMovement = bInCheckStuckMovement;
+	}
+
+	void ClearController()
+	{
+		Controller = nullptr;
+	}
+
+	void Complete()
+	{
+		ExecuteCompleted(false);
+	}
+
+	bool HasRegisteredTimers() const;
+};
+
+UCLASS()
+class UDirectiveUtilTestMoveToActorTask : public UDirectiveUtilTask_MoveToActor
+{
+	GENERATED_BODY()
+
+public:
+	void Configure(AController* InController, AActor* InGoal, const bool bInCheckStuckMovement)
+	{
+		Controller = InController;
+		Goal = InGoal;
+		bCheckStuckMovement = bInCheckStuckMovement;
+	}
+
+	void ClearController()
+	{
+		Controller = nullptr;
+	}
+
+	void Complete()
+	{
+		ExecuteCompleted(false);
+	}
+
+	bool HasRegisteredTimers() const;
 };

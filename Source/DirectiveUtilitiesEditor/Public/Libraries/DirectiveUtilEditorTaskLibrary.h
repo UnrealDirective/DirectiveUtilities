@@ -15,7 +15,7 @@ class DIRECTIVEUTILITIESEDITOR_API UDirectiveUtilEditorTaskLibrary : public UBlu
 	GENERATED_BODY()
 
 public:
-	/** Starts a modal editor progress task. TotalWork must be greater than zero. */
+	/** Starts a modal editor progress task. TotalWork must be greater than zero, and only one task can be active. */
 	UFUNCTION(BlueprintCallable, Category = "Directive Utilities|Editor|Task")
 	static UDirectiveUtilEditorSlowTask* StartEditorSlowTask(float TotalWork, const FText& Description, bool bCanCancel = false);
 

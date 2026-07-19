@@ -43,6 +43,18 @@ namespace DirectiveUtilAsyncTraceTestHelpers
 	}
 }
 
+bool UDirectiveUtilTestMoveToLocationTask::HasRegisteredTimers() const
+{
+	const UWorld* World = TimerWorld.Get();
+	return World && (World->GetTimerManager().TimerExists(TimerHandle) || World->GetTimerManager().TimerExists(StuckTimerHandle));
+}
+
+bool UDirectiveUtilTestMoveToActorTask::HasRegisteredTimers() const
+{
+	const UWorld* World = TimerWorld.Get();
+	return World && (World->GetTimerManager().TimerExists(TimerHandle) || World->GetTimerManager().TimerExists(StuckTimerHandle));
+}
+
 class FDirectiveUtilTickTraceWorld : public IAutomationLatentCommand
 {
 public:
@@ -298,6 +310,25 @@ bool FDirectiveUtilMoveToLocationTest::RunTest(const FString& Parameters)
 		Listener->RemoveFromRoot();
 	}
 
+	{
+		APlayerController* Controller = World->SpawnActor<APlayerController>();
+		ADefaultPawn* Pawn = World->SpawnActor<ADefaultPawn>();
+		if (Controller && Pawn)
+		{
+			Controller->SetPawn(Pawn);
+			UDirectiveUtilTestMoveToLocationTask* Task = NewObject<UDirectiveUtilTestMoveToLocationTask>();
+			Task->Configure(Controller, FVector(1000.0f, 0.0f, 0.0f), true);
+			Task->Activate();
+			TestTrue("Move to location should register its timers", Task->HasRegisteredTimers());
+			Task->ClearController();
+			Task->Complete();
+			TestFalse("Move to location should clear timers without a controller", Task->HasRegisteredTimers());
+			Task->Configure(Controller, FVector(1000.0f, 0.0f, 0.0f), true);
+			Task->Activate();
+			TestFalse("A completed move to location should not restart", Task->HasRegisteredTimers());
+		}
+	}
+
 	GEngine->DestroyWorldContext(World);
 	World->DestroyWorld(false);
 
@@ -427,6 +458,26 @@ bool FDirectiveUtilMoveToActorTest::RunTest(const FString& Parameters)
 
 		Listener->Keepalive = nullptr;
 		Listener->RemoveFromRoot();
+	}
+
+	{
+		APlayerController* Controller = World->SpawnActor<APlayerController>();
+		ADefaultPawn* Pawn = World->SpawnActor<ADefaultPawn>();
+		AStaticMeshActor* Goal = World->SpawnActor<AStaticMeshActor>();
+		if (Controller && Pawn && Goal)
+		{
+			Controller->SetPawn(Pawn);
+			UDirectiveUtilTestMoveToActorTask* Task = NewObject<UDirectiveUtilTestMoveToActorTask>();
+			Task->Configure(Controller, Goal, true);
+			Task->Activate();
+			TestTrue("Move to actor should register its timers", Task->HasRegisteredTimers());
+			Task->ClearController();
+			Task->Complete();
+			TestFalse("Move to actor should clear timers without a controller", Task->HasRegisteredTimers());
+			Task->Configure(Controller, Goal, true);
+			Task->Activate();
+			TestFalse("A completed move to actor should not restart", Task->HasRegisteredTimers());
+		}
 	}
 
 	GEngine->DestroyWorldContext(World);

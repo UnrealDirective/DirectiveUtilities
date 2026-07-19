@@ -13,14 +13,14 @@ UDirectiveUtilEditorSlowTask* UDirectiveUtilEditorTaskLibrary::StartEditorSlowTa
 	const FText& Description,
 	const bool bCanCancel)
 {
-	if (TotalWork <= 0.0f)
+	if (!FMath::IsFinite(TotalWork) || TotalWork <= 0.0f)
 	{
 		return nullptr;
 	}
 
 	UDirectiveUtilEditorSlowTask* Task = NewObject<UDirectiveUtilEditorSlowTask>();
 	Task->Initialize(TotalWork, Description, bCanCancel, true);
-	return Task;
+	return Task->IsActive() ? Task : nullptr;
 }
 
 bool UDirectiveUtilEditorTaskLibrary::ShowEditorNotification(
@@ -35,7 +35,9 @@ bool UDirectiveUtilEditorTaskLibrary::ShowEditorNotification(
 
 	FNotificationInfo NotificationInfo(Message);
 	NotificationInfo.bFireAndForget = true;
-	NotificationInfo.ExpireDuration = FMath::Max(0.0f, ExpireDuration);
+	NotificationInfo.ExpireDuration = FMath::IsFinite(ExpireDuration)
+		? FMath::Max(0.0f, ExpireDuration)
+		: 0.0f;
 	if (State == EDirectiveUtilEditorNotificationState::Warning)
 	{
 		NotificationInfo.Image = FAppStyle::GetBrush("Icons.WarningWithColor");

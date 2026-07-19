@@ -8,9 +8,12 @@
 #include "Components/StaticMeshComponent.h"
 #include "Components/BoxComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "Materials/Material.h"
+#include "Materials/MaterialExpressionTextureSample.h"
 #include "Materials/MaterialInterface.h"
 #include "Engine/World.h"
 #include "Engine/Engine.h"
+#include "UObject/Package.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDirectiveUtilEditorActorSubsystemTest, "DirectiveUtilities.EditorActorSubsystemTests", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
@@ -267,6 +270,34 @@ bool FDirectiveUtilEditorActorSubsystemFilterCoverageTest::RunTest(const FString
 	{
 		TestEqual("ByTextureName(absent) Include => none", RunFilter([](const TArray<AActor*>& S, TArray<AActor*>& O){ UDirectiveUtilEditorActorSubsystem::FilterActorsByTextureName(S, O, TEXT("__udcore_absent_texture__"), BaseAndOverride, Include); }).Num(), 0);
 		TestEqual("ByTextureName(absent) Exclude => all", RunFilter([](const TArray<AActor*>& S, TArray<AActor*>& O){ UDirectiveUtilEditorActorSubsystem::FilterActorsByTextureName(S, O, TEXT("__udcore_absent_texture__"), BaseAndOverride, Exclude); }).Num(), 3);
+	}
+
+	{
+		UMaterial* MissingTextureMaterial = NewObject<UMaterial>(GetTransientPackage());
+		UMaterialExpressionTextureSample* MissingTextureExpression = NewObject<UMaterialExpressionTextureSample>(MissingTextureMaterial);
+		MissingTextureMaterial->GetExpressionCollection().AddExpression(MissingTextureExpression);
+		CompA->SetMaterial(0, MissingTextureMaterial);
+		const TArray<AActor*> MissingTextures = RunFilter([](const TArray<AActor*>& S, TArray<AActor*>& O)
+		{
+			UDirectiveUtilEditorActorSubsystem::FilterActorsByMissingTextures(S, O, OverrideOnly, Include);
+		});
+		TestTrue("Missing texture filter should include an actor with an unset texture expression", MissingTextures.Contains(ActorA));
+		TestFalse("Missing texture filter should exclude actors without unset texture expressions", MissingTextures.Contains(ActorB));
+		CompA->SetMaterial(0, MatA);
+	}
+
+	{
+		AActor* DestroyedActor = World->SpawnActor<AActor>();
+		World->DestroyActor(DestroyedActor);
+		TestFalse("Destroyed actor should be invalid", IsValid(DestroyedActor));
+		TArray<AActor*> InvalidActors = {DestroyedActor};
+		TArray<AActor*> FilteredInvalidActors;
+		UDirectiveUtilEditorActorSubsystem::FilterActorsByTag(
+			InvalidActors,
+			FilteredInvalidActors,
+			TEXT("Absent"),
+			Exclude);
+		TestEqual("Actor filters should skip invalid actors", FilteredInvalidActors.Num(), 0);
 	}
 
 	GEngine->DestroyWorldContext(World);

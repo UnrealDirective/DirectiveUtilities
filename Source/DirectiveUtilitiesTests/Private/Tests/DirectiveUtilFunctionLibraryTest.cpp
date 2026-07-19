@@ -2,6 +2,7 @@
 #include "Engine/World.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/App.h"
+#include "UObject/Package.h"
 
 namespace DirectiveUtilFunctionLibraryTest
 {

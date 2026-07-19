@@ -29,6 +29,8 @@ public class DirectiveUtilitiesTests : ModuleRules
 
         if (Target.bBuildEditor)
         {
+            PrivateIncludePaths.Add(System.IO.Path.Combine(ModuleDirectory, "../DirectiveUtilitiesEditor/Private"));
+            PrivateDependencyModuleNames.Add("AssetRegistry");
             PrivateDependencyModuleNames.Add("BlueprintGraph");
             PrivateDependencyModuleNames.Add("DirectiveUtilitiesBlueprintNodes");
             PrivateDependencyModuleNames.Add("DirectiveUtilitiesEditor");

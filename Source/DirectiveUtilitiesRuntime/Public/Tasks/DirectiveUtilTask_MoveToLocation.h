@@ -86,6 +86,8 @@ protected:
 
 	FTimerHandle StuckTimerHandle;
 
+	TWeakObjectPtr<UWorld> TimerWorld;
+
 	bool bHasCompleted = false;
 
 	void CheckMoveToLocation();
@@ -170,6 +172,8 @@ protected:
 	FTimerHandle TimerHandle;
 
 	FTimerHandle StuckTimerHandle;
+
+	TWeakObjectPtr<UWorld> TimerWorld;
 
 	bool bHasCompleted = false;
 

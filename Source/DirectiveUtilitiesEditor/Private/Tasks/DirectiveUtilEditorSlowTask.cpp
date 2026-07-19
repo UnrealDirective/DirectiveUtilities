@@ -4,6 +4,11 @@
 
 #include "Misc/ScopedSlowTask.h"
 
+namespace
+{
+	UDirectiveUtilEditorSlowTask* ActiveSlowTask = nullptr;
+}
+
 void UDirectiveUtilEditorSlowTask::Initialize(
 	const float TotalWork,
 	const FText& Description,
@@ -11,7 +16,17 @@ void UDirectiveUtilEditorSlowTask::Initialize(
 	const bool bShowDialog)
 {
 	Finish();
+	if (!FMath::IsFinite(TotalWork) || TotalWork <= 0.0f)
+	{
+		return;
+	}
+	if (ActiveSlowTask && ActiveSlowTask != this)
+	{
+		return;
+	}
+
 	SlowTask = new FScopedSlowTask(TotalWork, Description);
+	ActiveSlowTask = this;
 	if (bShowDialog)
 	{
 		SlowTask->MakeDialog(bCanCancel, true);
@@ -20,7 +35,7 @@ void UDirectiveUtilEditorSlowTask::Initialize(
 
 bool UDirectiveUtilEditorSlowTask::Advance(const float Work, const FText& Message)
 {
-	if (!SlowTask || Work < 0.0f)
+	if (!SlowTask || !FMath::IsFinite(Work) || Work < 0.0f)
 	{
 		return false;
 	}
@@ -41,8 +56,17 @@ bool UDirectiveUtilEditorSlowTask::IsActive() const
 
 void UDirectiveUtilEditorSlowTask::Finish()
 {
+	if (!SlowTask)
+	{
+		return;
+	}
+
 	delete SlowTask;
 	SlowTask = nullptr;
+	if (ActiveSlowTask == this)
+	{
+		ActiveSlowTask = nullptr;
+	}
 }
 
 void UDirectiveUtilEditorSlowTask::BeginDestroy()

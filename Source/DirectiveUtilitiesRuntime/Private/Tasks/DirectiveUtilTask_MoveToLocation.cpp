@@ -50,22 +50,30 @@ void UDirectiveUtilTask_MoveToLocation::EndTask()
 
 void UDirectiveUtilTask_MoveToLocation::Activate()
 {
-	if (!Controller || !Controller->GetPawn() || !Controller->GetWorld())
+	if (bHasCompleted)
+	{
+		return;
+	}
+
+	APawn* Pawn = IsValid(Controller) ? Controller->GetPawn() : nullptr;
+	UWorld* World = IsValid(Pawn) ? Controller->GetWorld() : nullptr;
+	if (!World)
 	{
 		ExecuteCompleted(false);
 		UE_LOG(LogDirectiveUtil, Warning, TEXT("Controller, pawn, or world is unavailable while moving to location. Aborting."));
 		return;
 	}
 
-	StartLocation = Controller->GetPawn()->GetActorLocation();
+	TimerWorld = World;
+	StartLocation = Pawn->GetActorLocation();
 	LastCheckedLocation = StartLocation;
 	CurrentLocation = StartLocation;
 
-	Controller->GetWorld()->GetTimerManager().SetTimer(TimerHandle, this, &UDirectiveUtilTask_MoveToLocation::CheckMoveToLocation, 0.1f, true);
+	World->GetTimerManager().SetTimer(TimerHandle, this, &UDirectiveUtilTask_MoveToLocation::CheckMoveToLocation, 0.1f, true);
 
 	if (bCheckStuckMovement)
 	{
-		Controller->GetWorld()->GetTimerManager().SetTimer(StuckTimerHandle, this, &UDirectiveUtilTask_MoveToLocation::CheckStuckMovement, 3.f, true);
+		World->GetTimerManager().SetTimer(StuckTimerHandle, this, &UDirectiveUtilTask_MoveToLocation::CheckStuckMovement, 3.f, true);
 	}
 
 	UAIBlueprintHelperLibrary::SimpleMoveToLocation(Controller, Destination);
@@ -74,7 +82,7 @@ void UDirectiveUtilTask_MoveToLocation::Activate()
 	if (bDebugLineTrace)
 	{
 		DrawDebugLine(
-			Controller->GetWorld(),
+			World,
 			Destination + FVector(0, 0, 100),
 			Destination,
 			FColor::Green,
@@ -88,15 +96,15 @@ void UDirectiveUtilTask_MoveToLocation::Activate()
 
 void UDirectiveUtilTask_MoveToLocation::CheckMoveToLocation()
 {
-
-	if (!Controller || !Controller->GetPawn() || !Controller->GetWorld())
+	APawn* Pawn = IsValid(Controller) ? Controller->GetPawn() : nullptr;
+	if (!IsValid(Pawn) || !TimerWorld.IsValid())
 	{
 		ExecuteCompleted(false);
 		UE_LOG(LogDirectiveUtil, Warning, TEXT("Controller, pawn, or world is unavailable while moving to location. Aborting."));
 		return;
 	}
 
-	CurrentLocation = Controller->GetPawn()->GetActorLocation();
+	CurrentLocation = Pawn->GetActorLocation();
 	UE_LOG(LogDirectiveUtil, Verbose, TEXT("Controller is moving to location (%s). Current distance: %f."), *Destination.ToString(), FVector::Dist(CurrentLocation, Destination));
 
 	if (FVector::Dist(CurrentLocation, Destination) <= AcceptanceRadius)
@@ -116,7 +124,8 @@ void UDirectiveUtilTask_MoveToLocation::CheckMoveToLocation()
 
 void UDirectiveUtilTask_MoveToLocation::CheckStuckMovement()
 {
-	if (!Controller || !Controller->GetPawn() || !Controller->GetWorld())
+	const APawn* Pawn = IsValid(Controller) ? Controller->GetPawn() : nullptr;
+	if (!IsValid(Pawn) || !TimerWorld.IsValid())
 	{
 		ExecuteCompleted(false);
 		UE_LOG(LogDirectiveUtil, Warning, TEXT("Controller, pawn, or world is unavailable while moving to location. Aborting."));
@@ -142,11 +151,12 @@ void UDirectiveUtilTask_MoveToLocation::ExecuteCompleted(const bool bSuccess)
 
 	UE_LOG(LogDirectiveUtil, Log, TEXT("Movement to location completed. Success: %s."), bSuccess ? TEXT("true") : TEXT("false"));
 
-	if (Controller && Controller->GetWorld())
+	if (UWorld* World = TimerWorld.Get())
 	{
-		Controller->GetWorld()->GetTimerManager().ClearTimer(TimerHandle);
-		Controller->GetWorld()->GetTimerManager().ClearTimer(StuckTimerHandle);
+		World->GetTimerManager().ClearTimer(TimerHandle);
+		World->GetTimerManager().ClearTimer(StuckTimerHandle);
 	}
+	TimerWorld.Reset();
 
 	Completed.Broadcast(bSuccess);
 
@@ -186,22 +196,30 @@ void UDirectiveUtilTask_MoveToActor::EndTask()
 
 void UDirectiveUtilTask_MoveToActor::Activate()
 {
-	if (!Controller || !Controller->GetPawn() || !Controller->GetWorld() || !IsValid(Goal))
+	if (bHasCompleted)
+	{
+		return;
+	}
+
+	APawn* Pawn = IsValid(Controller) ? Controller->GetPawn() : nullptr;
+	UWorld* World = IsValid(Pawn) ? Controller->GetWorld() : nullptr;
+	if (!World || !IsValid(Goal))
 	{
 		ExecuteCompleted(false);
 		UE_LOG(LogDirectiveUtil, Warning, TEXT("Controller, pawn, goal, or world is unavailable while moving to actor. Aborting."));
 		return;
 	}
 
-	StartLocation = Controller->GetPawn()->GetActorLocation();
+	TimerWorld = World;
+	StartLocation = Pawn->GetActorLocation();
 	LastCheckedLocation = StartLocation;
 	CurrentLocation = StartLocation;
 
-	Controller->GetWorld()->GetTimerManager().SetTimer(TimerHandle, this, &UDirectiveUtilTask_MoveToActor::CheckMoveToActor, 0.1f, true);
+	World->GetTimerManager().SetTimer(TimerHandle, this, &UDirectiveUtilTask_MoveToActor::CheckMoveToActor, 0.1f, true);
 
 	if (bCheckStuckMovement)
 	{
-		Controller->GetWorld()->GetTimerManager().SetTimer(StuckTimerHandle, this, &UDirectiveUtilTask_MoveToActor::CheckStuckMovement, 3.f, true);
+		World->GetTimerManager().SetTimer(StuckTimerHandle, this, &UDirectiveUtilTask_MoveToActor::CheckStuckMovement, 3.f, true);
 	}
 
 	UAIBlueprintHelperLibrary::SimpleMoveToActor(Controller, Goal);
@@ -210,7 +228,8 @@ void UDirectiveUtilTask_MoveToActor::Activate()
 
 void UDirectiveUtilTask_MoveToActor::CheckMoveToActor()
 {
-	if (!Controller || !Controller->GetPawn() || !Controller->GetWorld())
+	APawn* Pawn = IsValid(Controller) ? Controller->GetPawn() : nullptr;
+	if (!IsValid(Pawn) || !TimerWorld.IsValid())
 	{
 		ExecuteCompleted(false);
 		UE_LOG(LogDirectiveUtil, Warning, TEXT("Controller, pawn, or world is unavailable while moving to actor. Aborting."));
@@ -226,7 +245,7 @@ void UDirectiveUtilTask_MoveToActor::CheckMoveToActor()
 
 	// The goal can move, so its location is re-read every poll.
 	const FVector GoalLocation = Goal->GetActorLocation();
-	CurrentLocation = Controller->GetPawn()->GetActorLocation();
+	CurrentLocation = Pawn->GetActorLocation();
 	UE_LOG(LogDirectiveUtil, Verbose, TEXT("Controller is moving to actor (%s). Current distance: %f."), *GetNameSafe(Goal), FVector::Dist(CurrentLocation, GoalLocation));
 
 	if (FVector::Dist(CurrentLocation, GoalLocation) <= AcceptanceRadius)
@@ -246,7 +265,8 @@ void UDirectiveUtilTask_MoveToActor::CheckMoveToActor()
 
 void UDirectiveUtilTask_MoveToActor::CheckStuckMovement()
 {
-	if (!Controller || !Controller->GetPawn() || !Controller->GetWorld())
+	const APawn* Pawn = IsValid(Controller) ? Controller->GetPawn() : nullptr;
+	if (!IsValid(Pawn) || !TimerWorld.IsValid())
 	{
 		ExecuteCompleted(false);
 		UE_LOG(LogDirectiveUtil, Warning, TEXT("Controller, pawn, or world is unavailable while moving to actor. Aborting."));
@@ -272,11 +292,12 @@ void UDirectiveUtilTask_MoveToActor::ExecuteCompleted(const bool bSuccess)
 
 	UE_LOG(LogDirectiveUtil, Log, TEXT("Movement to actor completed. Success: %s."), bSuccess ? TEXT("true") : TEXT("false"));
 
-	if (Controller && Controller->GetWorld())
+	if (UWorld* World = TimerWorld.Get())
 	{
-		Controller->GetWorld()->GetTimerManager().ClearTimer(TimerHandle);
-		Controller->GetWorld()->GetTimerManager().ClearTimer(StuckTimerHandle);
+		World->GetTimerManager().ClearTimer(TimerHandle);
+		World->GetTimerManager().ClearTimer(StuckTimerHandle);
 	}
+	TimerWorld.Reset();
 
 	Completed.Broadcast(bSuccess);
 

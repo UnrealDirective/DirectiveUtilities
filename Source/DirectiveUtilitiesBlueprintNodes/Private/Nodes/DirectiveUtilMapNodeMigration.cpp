@@ -20,57 +20,49 @@ namespace
 			&& Node.FunctionReference.GetMemberName() == GET_FUNCTION_NAME_CHECKED(UDirectiveUtilMapFunctionLibrary, Map_Append);
 	}
 
-	void CopyPinDefaults(const UK2Node_CallFunction& LegacyNode, UK2Node_DirectiveUtilMapAppend& NewNode)
+	void CopyMapPinTypes(const UK2Node_CallFunction& LegacyNode, UK2Node_DirectiveUtilMapAppend& NewNode)
 	{
-		for (const UEdGraphPin* LegacyPin : LegacyNode.Pins)
+		const FEdGraphPinType* MapType = nullptr;
+		for (const FName PinName : {FName(TEXT("TargetMap")), FName(TEXT("SourceMap"))})
 		{
-			UEdGraphPin* NewPin = NewNode.FindPin(LegacyPin->PinName);
-			if (!NewPin)
+			const UEdGraphPin* LegacyPin = LegacyNode.FindPin(PinName);
+			if (!LegacyPin)
 			{
 				continue;
 			}
 
-			NewPin->DefaultValue = LegacyPin->DefaultValue;
-			NewPin->DefaultObject = LegacyPin->DefaultObject;
-			NewPin->DefaultTextValue = LegacyPin->DefaultTextValue;
-		}
-	}
-
-	bool HaveMatchingPins(const UK2Node_CallFunction& LegacyNode, const UK2Node_DirectiveUtilMapAppend& NewNode)
-	{
-		for (const UEdGraphPin* LegacyPin : LegacyNode.Pins)
-		{
-			if (!LegacyPin->ParentPin && !NewNode.FindPin(LegacyPin->PinName))
+			if (!LegacyPin->LinkedTo.IsEmpty() && LegacyPin->LinkedTo[0]->PinType.IsMap())
 			{
-				return false;
+				MapType = &LegacyPin->LinkedTo[0]->PinType;
+				break;
+			}
+			if (LegacyPin->PinType.IsMap()
+				&& LegacyPin->PinType.PinCategory != UEdGraphSchema_K2::PC_Wildcard
+				&& LegacyPin->PinType.PinValueType.TerminalCategory != UEdGraphSchema_K2::PC_Wildcard)
+			{
+				MapType = &LegacyPin->PinType;
+				break;
 			}
 		}
 
-		return true;
-	}
-
-	void TransferPinLinks(UK2Node_CallFunction& LegacyNode, UK2Node_DirectiveUtilMapAppend& NewNode)
-	{
-		for (UEdGraphPin* LegacyPin : LegacyNode.Pins)
+		if (!MapType)
 		{
-			UEdGraphPin* NewPin = NewNode.FindPin(LegacyPin->PinName);
-			if (!NewPin)
-			{
-				continue;
-			}
+			return;
+		}
 
-			const TArray<UEdGraphPin*> LinkedPins = LegacyPin->LinkedTo;
-			for (UEdGraphPin* LinkedPin : LinkedPins)
+		for (const FName PinName : {FName(TEXT("TargetMap")), FName(TEXT("SourceMap"))})
+		{
+			if (UEdGraphPin* NewPin = NewNode.FindPin(PinName))
 			{
-				LegacyPin->BreakLinkTo(LinkedPin);
-				NewPin->MakeLinkTo(LinkedPin);
-				if (UK2Node* LinkedNode = Cast<UK2Node>(LinkedPin->GetOwningNode()))
-				{
-					LinkedNode->PinConnectionListChanged(LinkedPin);
-				}
+				NewPin->PinType.PinCategory = MapType->PinCategory;
+				NewPin->PinType.PinSubCategory = MapType->PinSubCategory;
+				NewPin->PinType.PinSubCategoryObject = MapType->PinSubCategoryObject;
+				NewPin->PinType.PinSubCategoryMemberReference = MapType->PinSubCategoryMemberReference;
+				NewPin->PinType.PinValueType = MapType->PinValueType;
+				NewPin->PinType.bIsWeakPointer = MapType->bIsWeakPointer;
+				NewPin->PinType.bIsUObjectWrapper = MapType->bIsUObjectWrapper;
+				NewPin->PinType.bSerializeAsSinglePrecisionFloat = MapType->bSerializeAsSinglePrecisionFloat;
 			}
-
-			NewNode.PinConnectionListChanged(NewPin);
 		}
 	}
 
@@ -90,14 +82,7 @@ namespace
 		NewNode->AllocateDefaultPins();
 		NewNode->AdvancedPinDisplay = LegacyNode.AdvancedPinDisplay;
 		NewNode->SetEnabledState(LegacyNode.GetDesiredEnabledState(), LegacyNode.HasUserSetTheEnabledState());
-		CopyPinDefaults(LegacyNode, *NewNode);
-		if (!HaveMatchingPins(LegacyNode, *NewNode))
-		{
-			NewNode->DestroyNode();
-			return false;
-		}
-
-		TransferPinLinks(LegacyNode, *NewNode);
+		CopyMapPinTypes(LegacyNode, *NewNode);
 
 		if (Schema->ReplaceOldNodeWithNew(&LegacyNode, NewNode, {}))
 		{

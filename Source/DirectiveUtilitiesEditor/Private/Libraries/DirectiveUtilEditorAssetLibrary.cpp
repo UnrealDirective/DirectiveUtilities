@@ -2,6 +2,7 @@
 
 
 #include "Libraries/DirectiveUtilEditorAssetLibrary.h"
+#include "AssetRegistry/DirectiveUtilAssetRegistry.h"
 #include "Editor.h"
 #include "Subsystems/EditorAssetSubsystem.h"
 #include "Algo/Transform.h"
@@ -21,10 +22,7 @@ namespace
 	{
 		if (IAssetRegistry* AssetRegistry = IAssetRegistry::Get())
 		{
-			if (AssetRegistry->IsLoadingAssets())
-			{
-				AssetRegistry->WaitForCompletion();
-			}
+			DirectiveUtilitiesEditor::EnsureAssetRegistryScan(*AssetRegistry);
 		}
 	}
 }
@@ -119,10 +117,7 @@ EDirectiveUtilSuccessStatus UDirectiveUtilEditorAssetLibrary::FixUpRedirectorsIn
 		return EDirectiveUtilSuccessStatus::Failure;
 	}
 
-	if (AssetRegistry->IsLoadingAssets())
-	{
-		AssetRegistry->WaitForCompletion();
-	}
+	DirectiveUtilitiesEditor::EnsureAssetRegistryScan(*AssetRegistry);
 
 	FAssetToolsModule& AssetToolsModule = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools");
 	IAssetTools& AssetTools = AssetToolsModule.Get();

@@ -8,6 +8,7 @@
 #include "EdGraphSchema_K2.h"
 #include "Engine/Blueprint.h"
 #include "K2Node_CallFunction.h"
+#include "K2Node_TemporaryVariable.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/CompilerResultsLog.h"
 #include "Libraries/DirectiveUtilMapFunctionLibrary.h"
@@ -58,9 +59,13 @@ namespace DirectiveUtilMapNodeTest
 
 	UEdGraphPin* AddMapOutput(UEdGraph& Graph, const FName Name, const FEdGraphPinType& PinType)
 	{
-		UEdGraphNode* SourceNode = NewObject<UEdGraphNode>(&Graph);
+		UK2Node_TemporaryVariable* SourceNode = NewObject<UK2Node_TemporaryVariable>(&Graph);
+		SourceNode->VariableType = PinType;
 		Graph.AddNode(SourceNode);
-		return SourceNode->CreatePin(EGPD_Output, PinType, Name);
+		SourceNode->AllocateDefaultPins();
+		UEdGraphPin* OutputPin = SourceNode->GetVariablePin();
+		OutputPin->PinName = Name;
+		return OutputPin;
 	}
 
 	UK2Node_CallFunction* AddFunctionNode(UEdGraph& Graph, const FName FunctionName)
@@ -303,6 +308,35 @@ bool FDirectiveUtilMapNodeWildcardTest::RunTest(const FString& Parameters)
 	TestEqual("Migration should preserve the overwrite default", MigratedAppendNode->FindPinChecked(TEXT("bOverwriteExisting"))->DefaultValue, FString(TEXT("false")));
 	TestTrue("Migrated TargetMap should preserve its connection", HasMapType(*MigratedAppendNode->FindPinChecked(TEXT("TargetMap")), UEdGraphSchema_K2::PC_String, UEdGraphSchema_K2::PC_Int));
 	TestTrue("Migrated SourceMap should resolve from TargetMap", HasMapType(*MigratedAppendNode->FindPinChecked(TEXT("SourceMap")), UEdGraphSchema_K2::PC_String, UEdGraphSchema_K2::PC_Int));
+
+	UEdGraph* FailedMigrationGraph = MakeGraph();
+	UBlueprint* FailedMigrationBlueprint = CastChecked<UBlueprint>(FailedMigrationGraph->GetOuter());
+	UK2Node_CallFunction* IncompatibleLegacyNode = AddFunctionNode(
+		*FailedMigrationGraph,
+		GET_FUNCTION_NAME_CHECKED(UDirectiveUtilMapFunctionLibrary, Map_Append));
+	UEdGraphPin* IncompatibleTargetMap = IncompatibleLegacyNode->FindPinChecked(TEXT("TargetMap"));
+	UEdGraphPin* LegacyOnlyPin = IncompatibleLegacyNode->CreatePin(
+		EGPD_Input,
+		UEdGraphSchema_K2::PC_Int,
+		TEXT("LegacyOnly"));
+	LegacyOnlyPin->ParentPin = IncompatibleTargetMap;
+	IncompatibleTargetMap->SubPins.Add(LegacyOnlyPin);
+	UEdGraphPin* IncompatibleMapOutput = AddMapOutput(*FailedMigrationGraph, TEXT("IncompatibleMapOutput"), StringIntMap);
+	Connect(*IncompatibleMapOutput, *IncompatibleLegacyNode, *IncompatibleTargetMap);
+	AddExpectedMessagePlain(
+		TEXT("BackwardCompatibilityNodeConversion Error 'cannot find pin LegacyOnly"),
+		ELogVerbosity::Warning,
+		EAutomationExpectedMessageFlags::Contains,
+		1);
+	TestFalse(
+		"An incompatible legacy Append node should not be replaced",
+		DirectiveUtilMapNodeMigration::UpgradeLegacyAppendNodes(*FailedMigrationBlueprint));
+	TestTrue(
+		"A failed migration should preserve the legacy connection",
+		IncompatibleMapOutput->LinkedTo.Contains(IncompatibleTargetMap));
+	TestTrue(
+		"A failed migration should preserve the legacy node",
+		FailedMigrationGraph->Nodes.Contains(IncompatibleLegacyNode));
 
 	return true;
 }

@@ -23,9 +23,24 @@
 
 namespace
 {
+	bool IsFiniteVector(const FVector& Value)
+	{
+		return FMath::IsFinite(Value.X) && FMath::IsFinite(Value.Y) && FMath::IsFinite(Value.Z);
+	}
+
+	bool IsFiniteQuat(const FQuat& Value)
+	{
+		return FMath::IsFinite(Value.X)
+			&& FMath::IsFinite(Value.Y)
+			&& FMath::IsFinite(Value.Z)
+			&& FMath::IsFinite(Value.W);
+	}
+
 	bool MatchesTextureReference(const UTexture* Texture, const TSoftObjectPtr<UTexture2D>& TextureReference)
 	{
-		return Texture && FSoftObjectPath(Texture) == TextureReference.ToSoftObjectPath();
+		return TextureReference.IsNull()
+			? Texture == nullptr
+			: Texture && FSoftObjectPath(Texture) == TextureReference.ToSoftObjectPath();
 	}
 
 	// Adds an actor to OutActors when whether it matches the predicate (evaluated once across all of the
@@ -53,7 +68,7 @@ namespace
 
 		for (TSourceActor* Actor : *Source)
 		{
-			if (!Actor || Seen.Contains(Actor)) { continue; }
+			if (!IsValid(Actor) || Seen.Contains(Actor)) { continue; }
 			if (ActorMatches(Actor) == bIncludeMatches)
 			{
 				Seen.Add(Actor);
@@ -145,10 +160,23 @@ namespace
 			FActorLayoutData Data;
 			Data.Actor = Actor;
 			Data.Location = Actor->GetActorLocation();
+			if (!IsFiniteVector(Data.Location)
+				|| !IsFiniteVector(Actor->GetActorScale3D())
+				|| !IsFiniteQuat(Actor->GetActorQuat()))
+			{
+				Result.SkippedActors.Add(Actor);
+				continue;
+			}
+
 			Data.Bounds = Actor->GetComponentsBoundingBox(true, true);
 			if (!Data.Bounds.IsValid)
 			{
 				Data.Bounds = FBox(Data.Location, Data.Location);
+			}
+			if (!IsFiniteVector(Data.Bounds.Min) || !IsFiniteVector(Data.Bounds.Max))
+			{
+				Result.SkippedActors.Add(Actor);
+				continue;
 			}
 			Data.AttachmentDepth = GetAttachmentDepth(Actor);
 			LayoutActors.Add(MoveTemp(Data));
@@ -168,14 +196,20 @@ namespace
 		for (const FActorLayoutData& Data : LayoutActors)
 		{
 			const FVector* Location = Locations.Find(Data.Actor);
-			if (!Location || Data.Actor->GetActorLocation().Equals(*Location))
+			if (!Location || !IsFiniteVector(*Location) || Data.Actor->GetActorLocation().Equals(*Location))
 			{
 				continue;
 			}
 
 			Data.Actor->Modify();
-			Data.Actor->SetActorLocation(*Location, false, nullptr, ETeleportType::TeleportPhysics);
-			Result.ChangedActors.Add(Data.Actor);
+			if (Data.Actor->SetActorLocation(*Location, false, nullptr, ETeleportType::TeleportPhysics))
+			{
+				Result.ChangedActors.Add(Data.Actor);
+			}
+			else
+			{
+				Result.SkippedActors.Add(Data.Actor);
+			}
 		}
 	}
 }
@@ -333,7 +367,12 @@ FDirectiveUtilActorOperationResult UDirectiveUtilEditorActorSubsystem::SnapActor
 {
 	FDirectiveUtilActorOperationResult Result;
 	TArray<FActorLayoutData> LayoutActors = GetLayoutActors(Actors, Result);
-	if (LayoutActors.IsEmpty() || MaximumDistance <= 0.0f || TraceDirection.IsNearlyZero())
+	if (LayoutActors.IsEmpty()
+		|| !FMath::IsFinite(MaximumDistance)
+		|| MaximumDistance <= 0.0f
+		|| !IsFiniteVector(TraceDirection)
+		|| TraceDirection.IsNearlyZero()
+		|| TraceChannel.GetValue() >= ECC_MAX)
 	{
 		for (const FActorLayoutData& Data : LayoutActors)
 		{
@@ -369,6 +408,12 @@ FDirectiveUtilActorOperationResult UDirectiveUtilEditorActorSubsystem::SnapActor
 			Result.SkippedActors.Add(Data.Actor);
 			continue;
 		}
+		if (!IsFiniteVector(Hit.Location)
+			|| (bAlignToNormal && (!IsFiniteVector(Hit.ImpactNormal) || Hit.ImpactNormal.IsNearlyZero())))
+		{
+			Result.SkippedActors.Add(Data.Actor);
+			continue;
+		}
 
 		FVector Location = Hit.Location;
 		if (Placement == EDirectiveUtilSurfacePlacement::Bounds)
@@ -386,7 +431,14 @@ FDirectiveUtilActorOperationResult UDirectiveUtilEditorActorSubsystem::SnapActor
 			Rotation = FQuat::FindBetweenNormals(Rotation.GetUpVector(), Hit.ImpactNormal) * Rotation;
 			Rotation.Normalize();
 		}
-		Targets.Add(Data.Actor, {Location, Rotation});
+		if (IsFiniteVector(Location) && IsFiniteQuat(Rotation))
+		{
+			Targets.Add(Data.Actor, {Location, Rotation});
+		}
+		else
+		{
+			Result.SkippedActors.Add(Data.Actor);
+		}
 	}
 
 	LayoutActors.Sort([](const FActorLayoutData& Left, const FActorLayoutData& Right) {
@@ -409,13 +461,20 @@ FDirectiveUtilActorOperationResult UDirectiveUtilEditorActorSubsystem::SnapActor
 		}
 
 		Data.Actor->Modify();
-		Data.Actor->SetActorLocationAndRotation(
+		const bool bMoved = Data.Actor->SetActorLocationAndRotation(
 			Target->Location,
 			Target->Rotation,
 			false,
 			nullptr,
 			ETeleportType::TeleportPhysics);
-		Result.ChangedActors.Add(Data.Actor);
+		if (bMoved)
+		{
+			Result.ChangedActors.Add(Data.Actor);
+		}
+		else
+		{
+			Result.SkippedActors.Add(Data.Actor);
+		}
 	}
 	return Result;
 }

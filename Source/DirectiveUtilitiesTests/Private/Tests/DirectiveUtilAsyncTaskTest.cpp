@@ -62,6 +62,24 @@ namespace DirectiveUtilAsyncTaskTestHelpers
 		Listener->RemoveFromRoot();
 	}
 
+	void DestroyShutdownScenario(UDirectiveUtilDelegateListener* Listener)
+	{
+		if (!Listener)
+		{
+			return;
+		}
+
+		UGameInstance* GameInstance = Listener->ScenarioGameInstance.Get();
+		Listener->Keepalive = nullptr;
+		Listener->ScenarioWorld = nullptr;
+		Listener->ScenarioGameInstance = nullptr;
+		if (GameInstance)
+		{
+			GameInstance->RemoveFromRoot();
+		}
+		Listener->RemoveFromRoot();
+	}
+
 	UDirectiveUtilDelegateListener* StartDelayScenario(float Duration, bool bCancel, bool bUseEndTask = false)
 	{
 		UDirectiveUtilDelegateListener* Listener = CreateScenarioListener();
@@ -730,6 +748,49 @@ bool FDirectiveUtilRepeatWithIntervalTaskTest::RunTest(const FString& Parameters
 		NullWorldTask->RemoveFromRoot();
 	}
 
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FDirectiveUtilAsyncTaskShutdownTest,
+	"DirectiveUtilities.AsyncTaskShutdownTests",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+
+bool FDirectiveUtilAsyncTaskShutdownTest::RunTest(const FString& Parameters)
+{
+	auto VerifyShutdown = [this](UDirectiveUtilDelegateListener* Listener, const FString& ScenarioName) {
+		if (!Listener)
+		{
+			AddError(FString::Printf(TEXT("Failed to create the %s shutdown scenario."), *ScenarioName));
+			return;
+		}
+
+		UCancellableAsyncAction* Task = Cast<UCancellableAsyncAction>(Listener->Keepalive);
+		UGameInstance* GameInstance = Listener->ScenarioGameInstance.Get();
+		UWorld* World = Listener->ScenarioWorld.Get();
+		if (!TestNotNull(*FString::Printf(TEXT("%s creates a cancellable task"), *ScenarioName), Task)
+			|| !TestNotNull(*FString::Printf(TEXT("%s creates a game instance"), *ScenarioName), GameInstance))
+		{
+			DirectiveUtilAsyncTaskTestHelpers::DestroyScenario(Listener);
+			return;
+		}
+
+		GameInstance->Shutdown();
+		Task->Cancel();
+		TestFalse(*FString::Printf(TEXT("%s is inactive after shutdown cancellation"), *ScenarioName), Task->IsActive());
+		if (World)
+		{
+			World->GetTimerManager().Tick(10.0f);
+		}
+		TestFalse(*FString::Printf(TEXT("%s does not complete after shutdown"), *ScenarioName), Listener->bCompleted);
+		TestEqual(*FString::Printf(TEXT("%s emits no updates after shutdown"), *ScenarioName), Listener->UpdatedCount, 0);
+		TestEqual(*FString::Printf(TEXT("%s emits no iterations after shutdown"), *ScenarioName), Listener->IterationCount, 0);
+		DirectiveUtilAsyncTaskTestHelpers::DestroyShutdownScenario(Listener);
+	};
+
+	VerifyShutdown(DirectiveUtilAsyncTaskTestHelpers::StartDelayScenario(60.0f, false), TEXT("Cancellable Delay"));
+	VerifyShutdown(DirectiveUtilAsyncTaskTestHelpers::StartDurationScenario(60.0f, 1.0f, false), TEXT("Update for Duration"));
+	VerifyShutdown(DirectiveUtilAsyncTaskTestHelpers::StartRepeatScenario(60, 1.0f, 1.0f, false), TEXT("Repeat with Interval"));
 	return true;
 }
 

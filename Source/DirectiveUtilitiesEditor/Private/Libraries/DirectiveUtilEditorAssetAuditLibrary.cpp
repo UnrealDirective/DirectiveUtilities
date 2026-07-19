@@ -2,6 +2,8 @@
 
 #include "Libraries/DirectiveUtilEditorAssetAuditLibrary.h"
 
+#include "AssetRegistry/DirectiveUtilAssetRegistry.h"
+#include "AssetRegistry/DirectiveUtilDependencyCycleFinder.h"
 #include "AssetRegistry/ARFilter.h"
 #include "AssetRegistry/IAssetRegistry.h"
 #include "Engine/AssetManager.h"
@@ -12,14 +14,6 @@
 namespace
 {
 	using namespace UE::AssetRegistry;
-
-	void WaitForAssetRegistry(IAssetRegistry& AssetRegistry)
-	{
-		if (AssetRegistry.IsLoadingAssets())
-		{
-			AssetRegistry.WaitForCompletion();
-		}
-	}
 
 	bool IsInsidePath(const FName PackageName, const FName Path)
 	{
@@ -64,7 +58,7 @@ namespace
 
 	TArray<FAssetData> GetScannedAssets(IAssetRegistry& AssetRegistry, const FDirectiveUtilAssetAuditOptions& Options)
 	{
-		WaitForAssetRegistry(AssetRegistry);
+		DirectiveUtilitiesEditor::EnsureAssetRegistryScan(AssetRegistry);
 
 		FARFilter Filter;
 		Filter.bRecursivePaths = true;
@@ -214,87 +208,6 @@ namespace
 		return TEXT("Unknown");
 	}
 
-	class FDependencyCycleFinder
-	{
-	public:
-		explicit FDependencyCycleFinder(const TMap<FName, TArray<FName>>& InGraph)
-			: Graph(InGraph)
-		{
-		}
-
-		TArray<FDirectiveUtilAssetDependencyCycle> Find()
-		{
-			TArray<FName> Packages;
-			Graph.GetKeys(Packages);
-			Packages.Sort(FNameLexicalLess());
-			for (const FName Package : Packages)
-			{
-				if (!Indices.Contains(Package))
-				{
-					Visit(Package);
-				}
-			}
-
-			Cycles.Sort([](const FDirectiveUtilAssetDependencyCycle& Left, const FDirectiveUtilAssetDependencyCycle& Right) {
-				return Left.Packages[0].LexicalLess(Right.Packages[0]);
-			});
-			return MoveTemp(Cycles);
-		}
-
-	private:
-		void Visit(const FName Package)
-		{
-			Indices.Add(Package, NextIndex);
-			LowLinks.Add(Package, NextIndex);
-			++NextIndex;
-			Stack.Add(Package);
-			OnStack.Add(Package);
-
-			for (const FName Dependency : Graph.FindRef(Package))
-			{
-				if (!Indices.Contains(Dependency))
-				{
-					Visit(Dependency);
-					LowLinks[Package] = FMath::Min(LowLinks[Package], LowLinks[Dependency]);
-				}
-				else if (OnStack.Contains(Dependency))
-				{
-					LowLinks[Package] = FMath::Min(LowLinks[Package], Indices[Dependency]);
-				}
-			}
-
-			if (LowLinks[Package] != Indices[Package])
-			{
-				return;
-			}
-
-			FDirectiveUtilAssetDependencyCycle Cycle;
-			FName Member;
-			do
-			{
-				Member = Stack.Pop(EAllowShrinking::No);
-				OnStack.Remove(Member);
-				Cycle.Packages.Add(Member);
-			}
-			while (Member != Package);
-
-			const bool bSelfCycle = Cycle.Packages.Num() == 1 && Graph.FindRef(Package).Contains(Package);
-			if (Cycle.Packages.Num() > 1 || bSelfCycle)
-			{
-				Cycle.Packages.Sort(FNameLexicalLess());
-				Cycles.Add(MoveTemp(Cycle));
-			}
-		}
-
-		const TMap<FName, TArray<FName>>& Graph;
-		TMap<FName, int32> Indices;
-		TMap<FName, int32> LowLinks;
-		TArray<FName> Stack;
-		TSet<FName> OnStack;
-		TArray<FDirectiveUtilAssetDependencyCycle> Cycles;
-		int32 NextIndex = 0;
-	};
-
 	TArray<FAssetData> FindUnreferencedCandidates(FAssetAuditScan& Scan)
 	{
 		TArray<FAssetData> Candidates;
@@ -357,7 +270,7 @@ namespace
 			Edges.Sort(FNameLexicalLess());
 		}
 
-		return FDependencyCycleFinder(Graph).Find();
+		return DirectiveUtilitiesEditor::FDependencyCycleFinder(Graph).Find();
 	}
 }
 

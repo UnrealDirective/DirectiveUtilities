@@ -37,6 +37,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Array slice, distinct, sampling, and pagination functions now support using the same array as both input and output.
 - Generic array outputs reject mismatched element types without modifying the destination array.
 - Weighted sampling without replacement stays unique across the full range of finite float weights.
+- Movement tasks clear their timers when the controller or pawn becomes invalid and cannot reactivate after completion.
+- Editor slow tasks reject non-finite work and overlapping tasks, then close safely if an unfinished task is collected.
+- Legacy Map Append migration preserves the original node and its links when conversion fails.
+- Actor filters skip invalid actors, and missing-texture filtering detects unset texture expressions.
+- Actor layout operations reject non-finite inputs and report failed transform changes as skipped.
+- Asset Registry queries start the full scan before waiting, and dependency cycle audits handle deep graphs without recursive traversal.
+- Windows runtime verification invokes the packaged build command correctly and waits for the packaged game to exit.
 
 ## [2.0.2] - 2026-07-15
 
