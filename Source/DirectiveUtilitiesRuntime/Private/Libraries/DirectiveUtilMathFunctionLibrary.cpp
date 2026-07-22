@@ -450,13 +450,7 @@ float UDirectiveUtilMathFunctionLibrary::GetFloatArrayMedian(const TArray<float>
 	TArray<float> WorkingValues = Values;
 	if (WorkingValues.ContainsByPredicate([](const float Value) { return FMath::IsNaN(Value); }))
 	{
-		WorkingValues.Sort();
-		const int32 Middle = WorkingValues.Num() / 2;
-		if (WorkingValues.Num() % 2 == 0)
-		{
-			return static_cast<float>((static_cast<double>(WorkingValues[Middle - 1]) + static_cast<double>(WorkingValues[Middle])) * 0.5);
-		}
-		return WorkingValues[Middle];
+		return std::numeric_limits<float>::quiet_NaN();
 	}
 	return static_cast<float>(CalculateMedian(WorkingValues));
 }

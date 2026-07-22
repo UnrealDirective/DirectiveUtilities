@@ -275,7 +275,7 @@ static void Array_Sample(
     TArray<int32>& OutArray);
 ```
 
-Returns random elements from a wildcard array. Without replacement, `Count` is limited to the source length and each source index can be selected once. With replacement, the output contains `Count` elements and values may repeat. An empty source or a non-positive count returns an empty output.
+Returns random elements from a wildcard array. Without replacement, `Count` is limited to the source length and each source index can be selected once. With replacement, the output contains `Count` elements and values may repeat. An empty source, a non-positive count, or a count above 1,000,000 returns an empty output.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -328,7 +328,7 @@ Samples a wildcard array using one weight per source element. Negative and non-f
 | bWithReplacement | `bool` | Allows the same source index to be selected more than once. |
 | OutArray | `Wildcard Array` | The sampled values. |
 
-**Returns:** False when `Count` is negative, the array lengths differ, or no entry has a positive weight for a non-empty request.
+**Returns:** False when `Count` is negative or above 1,000,000, the array lengths differ, or no entry has a positive weight for a non-empty request.
 
 ## Sample Weighted Array From Stream
 **Type:** Blueprint Callable &nbsp;|&nbsp; **Category:** `Directive Utilities|Array`
@@ -354,7 +354,7 @@ Uses the same rules as `Sample Weighted Array`, but advances the supplied random
 | RandomStream | `FRandomStream` | The stream used for selection. Its state advances. |
 | OutArray | `Wildcard Array` | The sampled values. |
 
-**Returns:** False when `Count` is negative, the array lengths differ, or no entry has a positive weight for a non-empty request.
+**Returns:** False when `Count` is negative or above 1,000,000, the array lengths differ, or no entry has a positive weight for a non-empty request.
 
 ## Get Array Page
 **Type:** Blueprint Pure &nbsp;|&nbsp; **Category:** `Directive Utilities|Array`

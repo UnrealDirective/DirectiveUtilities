@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Unreal Directive. Licensed under the MIT License.
+
 #include "Libraries/DirectiveUtilSaveGameFunctionLibrary.h"
 #include "Tests/DirectiveUtilTestObject.h"
 #include "Kismet/GameplayStatics.h"
@@ -99,6 +101,8 @@ bool FDirectiveUtilSaveGameFunctionLibraryTest::RunTest(const FString& Parameter
 				UDirectiveUtilSaveGameFunctionLibrary::DoesSaveSlotExist(TEXT("../escape")));
 			TestFalse("DeleteSaveSlot should reject an invalid slot name",
 				UDirectiveUtilSaveGameFunctionLibrary::DeleteSaveSlot(TEXT("../escape")));
+			TestFalse("DoesSaveSlotExist should reject a nested slot path",
+				UDirectiveUtilSaveGameFunctionLibrary::DoesSaveSlotExist(TEXT("Profiles/Slot1")));
 			TestFalse("RenameSaveSlot should reject an invalid source slot name",
 				UDirectiveUtilSaveGameFunctionLibrary::RenameSaveSlot(TEXT("../escape"), SlotC));
 			TestFalse("RenameSaveSlot should reject an invalid destination slot name",

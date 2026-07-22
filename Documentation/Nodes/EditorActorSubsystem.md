@@ -967,11 +967,11 @@ Returns a list of actors based on the provided texture name and options.
 ## Get Invalid Actors
 **Type:** Blueprint Callable &nbsp;|&nbsp; **Category:** `Directive Utilities|Select`
 
+Deprecated. Unreal's editor actor enumeration excludes invalid and pending-kill actors, so this node always returns an empty array.
+
 ```cpp
 void GetInvalidActors(TArray<AActor*>& FoundActors);
 ```
-
-Returns a list of invalid actors.
 
 **Returns:** FoundActors: the list of actors that were found.
 

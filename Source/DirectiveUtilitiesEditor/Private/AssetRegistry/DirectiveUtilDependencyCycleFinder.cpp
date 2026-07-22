@@ -30,7 +30,12 @@ namespace DirectiveUtilitiesEditor
 			{
 				const FName Package = Pending.Pop(EAllowShrinking::No);
 				Cycle.Packages.Add(Package);
-				for (const FName Referencer : ReverseGraph.FindRef(Package))
+				const TArray<FName>* Referencers = ReverseGraph.Find(Package);
+				if (!Referencers)
+				{
+					continue;
+				}
+				for (const FName Referencer : *Referencers)
 				{
 					if (!Visited.Contains(Referencer))
 					{
@@ -40,8 +45,10 @@ namespace DirectiveUtilitiesEditor
 				}
 			}
 
-			const bool bSelfCycle = Cycle.Packages.Num() == 1
-				&& Graph.FindRef(Cycle.Packages[0]).Contains(Cycle.Packages[0]);
+			const TArray<FName>* RootDependencies = Cycle.Packages.Num() == 1
+				? Graph.Find(Cycle.Packages[0])
+				: nullptr;
+			const bool bSelfCycle = RootDependencies && RootDependencies->Contains(Cycle.Packages[0]);
 			if (Cycle.Packages.Num() > 1 || bSelfCycle)
 			{
 				Cycle.Packages.Sort(FNameLexicalLess());
@@ -76,10 +83,10 @@ namespace DirectiveUtilitiesEditor
 			while (!Pending.IsEmpty())
 			{
 				FTraversalFrame& Frame = Pending.Last();
-				const TArray<FName>& Dependencies = Graph.FindRef(Frame.Package);
-				if (Frame.NextDependencyIndex < Dependencies.Num())
+				const TArray<FName>* Dependencies = Graph.Find(Frame.Package);
+				if (Dependencies && Frame.NextDependencyIndex < Dependencies->Num())
 				{
-					const FName Dependency = Dependencies[Frame.NextDependencyIndex++];
+					const FName Dependency = (*Dependencies)[Frame.NextDependencyIndex++];
 					if (!Visited.Contains(Dependency))
 					{
 						Visited.Add(Dependency);

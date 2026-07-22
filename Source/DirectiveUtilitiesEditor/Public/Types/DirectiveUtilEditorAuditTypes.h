@@ -28,6 +28,9 @@ struct FDirectiveUtilAssetAuditOptions
 	TArray<FName> ExcludedPackagePaths;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Directive Utilities|Asset Audit")
+	bool bUseDefaultPathExclusions = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Directive Utilities|Asset Audit")
 	bool bIncludePrimaryAssets = false;
 
 	FDirectiveUtilAssetAuditOptions()

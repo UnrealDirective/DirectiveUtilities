@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Unreal Directive. Licensed under the MIT License.
+
 #if WITH_EDITOR
 
 #include "Subsystems/DirectiveUtilEditorActorSubsystem.h"
@@ -19,6 +21,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDirectiveUtilEditorActorSubsystemTest, "Direct
 
 bool FDirectiveUtilEditorActorSubsystemTest::RunTest(const FString& Parameters)
 {
+	UDirectiveUtilEditorActorSubsystem::FocusActorsInViewport({nullptr});
+
 	// IsActorWithinBoxBounds should not crash and should return false with null Actor
 	TestFalse("IsActorWithinBoxBounds should return false with null Actor",
 		UDirectiveUtilEditorActorSubsystem::IsActorWithinBoxBounds(nullptr, nullptr));

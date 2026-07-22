@@ -4,7 +4,7 @@
 
 **Module:** `DirectiveUtilitiesEditor (Editor)` &nbsp;|&nbsp; **Header:** `Source/DirectiveUtilitiesEditor/Public/Libraries/DirectiveUtilEditorAssetAuditLibrary.h`
 
-Every scan waits for the Asset Registry's initial load. The default scan path is `/Game`. Developer content, external actor and object packages, redirectors, and test folders are excluded. Add project-specific exclusions through `FDirectiveUtilAssetAuditOptions`.
+Every scan waits for the Asset Registry's initial load. The default scan path is `/Game`. Developer content, external actor and object packages, redirectors, and test folders are excluded by default. Set `bUseDefaultPathExclusions` to false to include those paths. Add project-specific exclusions through `FDirectiveUtilAssetAuditOptions`.
 
 Unreferenced results are candidates. The Asset Registry cannot see every runtime string lookup or indirect load, so these nodes do not claim that an asset is safe to delete. The library does not delete, rename, consolidate, save, or modify assets.
 

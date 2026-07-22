@@ -36,11 +36,12 @@ namespace
 			return true;
 		}
 
-		if (ContainsPathSegment(Asset.PackagePath, TEXT("Developers"))
+		if (Options.bUseDefaultPathExclusions
+			&& (ContainsPathSegment(Asset.PackagePath, TEXT("Developers"))
 			|| ContainsPathSegment(Asset.PackagePath, TEXT("__ExternalActors__"))
 			|| ContainsPathSegment(Asset.PackagePath, TEXT("__ExternalObjects__"))
 			|| ContainsPathSegment(Asset.PackagePath, TEXT("Test"))
-			|| ContainsPathSegment(Asset.PackagePath, TEXT("Tests")))
+			|| ContainsPathSegment(Asset.PackagePath, TEXT("Tests"))))
 		{
 			return true;
 		}
@@ -116,6 +117,10 @@ namespace
 
 		const FString Package = PackageName.ToString();
 		if (Package.StartsWith(TEXT("/Script/")) || Package.StartsWith(TEXT("/Memory/")) || Package.StartsWith(TEXT("/Temp/")))
+		{
+			return true;
+		}
+		if (FindPackage(nullptr, *Package))
 		{
 			return true;
 		}

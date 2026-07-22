@@ -52,7 +52,7 @@ void UDirectiveUtilTask_AsyncLoadAsset::Activate()
 
 void UDirectiveUtilTask_AsyncLoadAsset::OnLoaded()
 {
-	UObject* LoadedAsset = StreamableHandle.IsValid() ? StreamableHandle->GetLoadedAsset() : nullptr;
+	UObject* LoadedAsset = SoftAsset.Get();
 	if (LoadedAsset)
 	{
 		Completed.Broadcast(LoadedAsset);
@@ -120,7 +120,7 @@ void UDirectiveUtilTask_AsyncLoadClass::Activate()
 
 void UDirectiveUtilTask_AsyncLoadClass::OnLoaded()
 {
-	UClass* LoadedClass = StreamableHandle.IsValid() ? Cast<UClass>(StreamableHandle->GetLoadedAsset()) : nullptr;
+	UClass* LoadedClass = SoftClass.Get();
 	if (LoadedClass)
 	{
 		Completed.Broadcast(LoadedClass);
@@ -157,8 +157,6 @@ UDirectiveUtilTask_AsyncLoadAssets* UDirectiveUtilTask_AsyncLoadAssets::AsyncLoa
 
 void UDirectiveUtilTask_AsyncLoadAssets::Activate()
 {
-	// Unset references are filtered out of the request but keep their null slots in the output;
-	// duplicates are requested once and resolved per slot.
 	TArray<FSoftObjectPath> PathsToLoad;
 	for (const TSoftObjectPtr<UObject>& SoftAsset : SoftAssets)
 	{
@@ -170,7 +168,6 @@ void UDirectiveUtilTask_AsyncLoadAssets::Activate()
 
 	if (PathsToLoad.Num() == 0)
 	{
-		// Nothing to request; an empty request list is an error path in the streamable manager.
 		OnLoaded();
 		return;
 	}
@@ -194,8 +191,6 @@ void UDirectiveUtilTask_AsyncLoadAssets::Activate()
 		return;
 	}
 
-	// Binding fails when the load already finished (all assets were in memory); complete directly,
-	// with the guard keeping the broadcast exactly once.
 	if (!StreamableHandle->BindUpdateDelegate(FStreamableUpdateDelegate::CreateUObject(this, &UDirectiveUtilTask_AsyncLoadAssets::OnUpdate)))
 	{
 		OnLoaded();

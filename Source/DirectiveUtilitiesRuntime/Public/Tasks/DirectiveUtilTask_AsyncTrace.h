@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Kismet/BlueprintAsyncActionBase.h"
+#include "Tasks/DirectiveUtilAsyncActionBase.h"
 #include "Engine/EngineTypes.h"
 #include "Engine/HitResult.h"
 #include "DirectiveUtilTask_AsyncTrace.generated.h"
@@ -28,7 +28,7 @@ enum class EDirectiveUtilTraceShape : uint8
  * The trace cannot be cancelled.
  */
 UCLASS(BlueprintType, meta=(ExposedAsyncProxy = AsyncTask, DisplayName="Async Trace"))
-class DIRECTIVEUTILITIESRUNTIME_API UDirectiveUtilTask_AsyncTrace : public UBlueprintAsyncActionBase
+class DIRECTIVEUTILITIESRUNTIME_API UDirectiveUtilTask_AsyncTrace : public UDirectiveUtilAsyncActionBase
 {
 	GENERATED_BODY()
 

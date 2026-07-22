@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Unreal Directive. Licensed under the MIT License.
+
 #include "Libraries/DirectiveUtilRegexFunctionLibrary.h"
 #include "Misc/AutomationTest.h"
 

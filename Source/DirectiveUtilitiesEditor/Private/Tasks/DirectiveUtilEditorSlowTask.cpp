@@ -27,6 +27,7 @@ void UDirectiveUtilEditorSlowTask::Initialize(
 
 	SlowTask = new FScopedSlowTask(TotalWork, Description);
 	ActiveSlowTask = this;
+	AddToRoot();
 	if (bShowDialog)
 	{
 		SlowTask->MakeDialog(bCanCancel, true);
@@ -40,7 +41,9 @@ bool UDirectiveUtilEditorSlowTask::Advance(const float Work, const FText& Messag
 		return false;
 	}
 
-	SlowTask->EnterProgressFrame(Work, Message);
+	const float CompletedWork = SlowTask->CompletedWork + SlowTask->CurrentFrameScope;
+	const float RemainingWork = FMath::Max(0.0f, SlowTask->TotalAmountOfWork - CompletedWork);
+	SlowTask->EnterProgressFrame(FMath::Min(Work, RemainingWork), Message);
 	return true;
 }
 
@@ -67,10 +70,16 @@ void UDirectiveUtilEditorSlowTask::Finish()
 	{
 		ActiveSlowTask = nullptr;
 	}
+	if (IsRooted())
+	{
+		RemoveFromRoot();
+	}
 }
 
-void UDirectiveUtilEditorSlowTask::BeginDestroy()
+void UDirectiveUtilEditorSlowTask::FinishActiveTask()
 {
-	Finish();
-	Super::BeginDestroy();
+	if (ActiveSlowTask)
+	{
+		ActiveSlowTask->Finish();
+	}
 }

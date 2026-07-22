@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Engine/CancellableAsyncAction.h"
+#include "Tasks/DirectiveUtilAsyncActionBase.h"
 #include "Engine/TimerHandle.h"
 #include "DirectiveUtilTask_Delay.generated.h"
 
@@ -14,7 +14,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnDelayCompleted);
  * A cancellable delay.
  */
 UCLASS(BlueprintType, meta=(ExposedAsyncProxy = AsyncTask, DisplayName="Cancellable Delay"))
-class DIRECTIVEUTILITIESRUNTIME_API UDirectiveUtilTask_Delay : public UCancellableAsyncAction
+class DIRECTIVEUTILITIESRUNTIME_API UDirectiveUtilTask_Delay : public UDirectiveUtilCancellableAsyncAction
 {
 	GENERATED_BODY()
 

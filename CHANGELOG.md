@@ -7,14 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.1.0] - 2026-07-18
+## [2.1.0] - 2026-07-22
 
 ### Added
 - Array sampling with optional replacement, seeded sampling, zero-based pagination, and natural sorting for string and name arrays.
 - Weighted array sampling with optional replacement and deterministic random-stream support.
 - Cancellable duration updates and fixed-count interval repeats for runtime Blueprints.
 - Typed runtime queries for world type, build configuration, and build target.
-- Editor slow tasks with progress, cancellation checks, explicit finish, and automatic cleanup when the task object is destroyed.
+- Editor slow tasks with progress, cancellation checks, and explicit finish.
 - Editor notifications with neutral, success, warning, and failure states.
 - Read-only asset audits for unreferenced candidates, missing references, dependency cycles, disk use, dependency counts, referencer counts, primary assets, and CSV export.
 - Read-only Blueprint inspection by compile status, parent class, interface, component class, and unused variables.
@@ -32,18 +32,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added repeatable runtime performance tests with CSV baselines for the optimized operations.
 - Added table-driven and seeded correctness cases from empty inputs through 4,096 items.
 - Runtime automation can now execute in packaged clients, and wildcard pin tests cover every generic array and map node.
+- Added a cross-platform packager for engine-specific Fab source archives.
+- Declared the supported platforms on every plugin module and aligned the module documentation.
+- Save Game slot operations now document their portable flat-filename requirement.
 
 ### Fixed
 - Array slice, distinct, sampling, and pagination functions now support using the same array as both input and output.
 - Generic array outputs reject mismatched element types without modifying the destination array.
 - Weighted sampling without replacement stays unique across the full range of finite float weights.
 - Movement tasks clear their timers when the controller or pawn becomes invalid and cannot reactivate after completion.
-- Editor slow tasks reject non-finite work and overlapping tasks, then close safely if an unfinished task is collected.
+- Editor slow tasks reject non-finite work and overlapping tasks, remain alive until finished, and close during module shutdown.
 - Legacy Map Append migration preserves the original node and its links when conversion fails.
 - Actor filters skip invalid actors, and missing-texture filtering detects unset texture expressions.
 - Actor layout operations reject non-finite inputs and report failed transform changes as skipped.
 - Asset Registry queries start the full scan before waiting, and dependency cycle audits handle deep graphs without recursive traversal.
 - Windows runtime verification invokes the packaged build command correctly and waits for the packaged game to exit.
+- Array sampling rejects unsafe allocation sizes, pagination avoids integer overflow, and float medians return `NaN` for inputs containing `NaN`.
+- Async actions stop on world cleanup, and immediate asset-load completions resolve without relying on an assigned streamable handle.
+- AI movement cancellation stops active path following, and acceptance checks use horizontal distance.
+- Viewport focus skips invalid actors and uses the current level viewport during PIE.
+- Asset audits recognize loaded packages, allow default path exclusions to be disabled, and avoid copying dependency arrays during cycle detection.
+- Unused Blueprint variable queries omit externally accessible variables by default.
+- Clipboard reads are callable nodes so Blueprint execution order remains explicit.
+- Fab packaging rejects dirty working trees unless explicitly overridden.
+- Added the required publisher notice to every C++ source and header file.
 
 ## [2.0.2] - 2026-07-15
 

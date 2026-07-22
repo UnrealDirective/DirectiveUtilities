@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Unreal Directive. Licensed under the MIT License.
+
 #include "Libraries/DirectiveUtilArrayFunctionLibrary.h"
 #include "Tests/DirectiveUtilTestObject.h"
 
@@ -320,6 +322,8 @@ bool FDirectiveUtilArrayFunctionLibraryTest::RunTest(const FString& Parameters)
 	TestObject->TestArray = {10, 20, 30, 40, 50};
 	UDirectiveUtilArrayFunctionLibrary::GenericArray_Sample(&TestObject->TestArray, ArrayProperty, 0, false, nullptr, &SampledValues, ArrayProperty);
 	TestTrue("Sampling zero values should return an empty array", SampledValues.IsEmpty());
+	UDirectiveUtilArrayFunctionLibrary::GenericArray_Sample(&TestObject->TestArray, ArrayProperty, 1'000'001, true, nullptr, &SampledValues, ArrayProperty);
+	TestTrue("Sampling should reject an unsafe output count", SampledValues.IsEmpty());
 
 	const TArray<float> DeterministicWeights = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
 	TArray<int32> WeightedSample;
@@ -349,6 +353,18 @@ bool FDirectiveUtilArrayFunctionLibraryTest::RunTest(const FString& Parameters)
 			&RepeatedWeightedSample,
 			ArrayProperty));
 	TestEqual("Weighted sampling from a stream should be deterministic", RepeatedWeightedSample, WeightedSample);
+	TestFalse(
+		"Weighted sampling should reject an unsafe output count",
+		UDirectiveUtilArrayFunctionLibrary::GenericArray_SampleWeighted(
+			&TestObject->TestArray,
+			ArrayProperty,
+			DeterministicWeights,
+			1'000'001,
+			true,
+			nullptr,
+			&WeightedSample,
+			ArrayProperty));
+	TestTrue("Rejected weighted sampling should clear the output", WeightedSample.IsEmpty());
 
 	FRandomStream FirstUniqueWeightedStream(31415);
 	FRandomStream SecondUniqueWeightedStream(31415);

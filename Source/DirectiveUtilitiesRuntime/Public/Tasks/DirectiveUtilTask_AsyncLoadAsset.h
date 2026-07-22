@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Kismet/BlueprintAsyncActionBase.h"
+#include "Tasks/DirectiveUtilAsyncActionBase.h"
 #include "UObject/SoftObjectPtr.h"
 #include "DirectiveUtilTask_AsyncLoadAsset.generated.h"
 
@@ -19,7 +19,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnAsyncLoadAssetsProgress, int32, 
  * Asynchronously loads a soft object reference and broadcasts the loaded asset, with a cancel option.
  */
 UCLASS(BlueprintType, meta=(ExposedAsyncProxy = AsyncTask, DisplayName="Async Load Asset"))
-class DIRECTIVEUTILITIESRUNTIME_API UDirectiveUtilTask_AsyncLoadAsset : public UBlueprintAsyncActionBase
+class DIRECTIVEUTILITIESRUNTIME_API UDirectiveUtilTask_AsyncLoadAsset : public UDirectiveUtilAsyncActionBase
 {
 	GENERATED_BODY()
 
@@ -71,7 +71,7 @@ protected:
  * Asynchronously loads a soft class reference and broadcasts the loaded class, with a cancel option.
  */
 UCLASS(BlueprintType, meta=(ExposedAsyncProxy = AsyncTask, DisplayName="Async Load Class"))
-class DIRECTIVEUTILITIESRUNTIME_API UDirectiveUtilTask_AsyncLoadClass : public UBlueprintAsyncActionBase
+class DIRECTIVEUTILITIESRUNTIME_API UDirectiveUtilTask_AsyncLoadClass : public UDirectiveUtilAsyncActionBase
 {
 	GENERATED_BODY()
 
@@ -124,7 +124,7 @@ protected:
  * loaded assets, with progress updates and a cancel option.
  */
 UCLASS(BlueprintType, meta=(ExposedAsyncProxy = AsyncTask, DisplayName="Async Load Assets"))
-class DIRECTIVEUTILITIESRUNTIME_API UDirectiveUtilTask_AsyncLoadAssets : public UBlueprintAsyncActionBase
+class DIRECTIVEUTILITIESRUNTIME_API UDirectiveUtilTask_AsyncLoadAssets : public UDirectiveUtilAsyncActionBase
 {
 	GENERATED_BODY()
 

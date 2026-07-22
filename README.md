@@ -40,6 +40,7 @@ Module boundaries keep editor dependencies out of packaged games.
 | Module | Use |
 |--------|-----|
 | `DirectiveUtilitiesRuntime` | Runtime libraries and async actions. This is the only module that ships in packaged games. |
+| `DirectiveUtilitiesBlueprintNodes` | Blueprint compiler support for wildcard container nodes. This module is excluded from packaged games. |
 | `DirectiveUtilitiesEditor` | Asset and actor tools for editor targets. |
 | `DirectiveUtilitiesTests` | Automation tests. The released descriptor limits this module to editor targets. |
 
@@ -111,6 +112,8 @@ Editor modules and editor-only targets can depend on `DirectiveUtilitiesEditor`.
 When behavior changes, update its implementation and tests together. Revise the matching page under `Documentation/Nodes/` in the same pull request, then build the plugin for each affected engine version.
 
 Use the local [runtime test host](Tests/RuntimeHost/README.md) to run the automation suite in both Unreal Editor and a packaged Development game. Generated projects and reports are written under `Build/RuntimeHost`.
+
+Create release archives with the [packaging tools](Tools/Packaging/README.md). Generated packages stay under `Build` and are not committed.
 
 Open pull requests against `dev` and describe any Blueprint compatibility impact.
 

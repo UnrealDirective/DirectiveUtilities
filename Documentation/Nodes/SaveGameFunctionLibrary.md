@@ -2,6 +2,8 @@
 
 > Save-slot utilities that fill the gaps left by UGameplayStatics: enumerating slots, reading slot timestamps, and serializing a save object to/from an in-memory byte array.
 
+Slot operations accept flat file names. Path separators and relative paths are rejected for consistent behavior across platform save backends.
+
 **Module:** `DirectiveUtilitiesRuntime (Runtime)` &nbsp;|&nbsp; **Header:** `Source/DirectiveUtilitiesRuntime/Public/Libraries/DirectiveUtilSaveGameFunctionLibrary.h`
 
 ---

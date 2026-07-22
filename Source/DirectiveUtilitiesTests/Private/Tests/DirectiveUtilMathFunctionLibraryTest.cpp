@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Unreal Directive. Licensed under the MIT License.
+
 #include "Libraries/DirectiveUtilMathFunctionLibrary.h"
 #include "Misc/AutomationTest.h"
 
@@ -247,6 +249,8 @@ bool FDirectiveUtilMathFunctionLibraryTest::RunTest(const FString& Parameters)
 		UDirectiveUtilMathFunctionLibrary::GetIntArrayMedian({7, 7, 7, 7, 7}), 7.0f);
 	TestEqual("GetFloatArrayMedian should handle repeated values",
 		UDirectiveUtilMathFunctionLibrary::GetFloatArrayMedian({7.5f, 7.5f, 7.5f, 7.5f}), 7.5f);
+	TestTrue("GetFloatArrayMedian should return NaN when any input is NaN",
+		FMath::IsNaN(UDirectiveUtilMathFunctionLibrary::GetFloatArrayMedian({1.0f, std::numeric_limits<float>::quiet_NaN(), 3.0f})));
 
 	FRandomStream MedianStream(481516);
 	for (int32 Iteration = 0; Iteration < 200; ++Iteration)

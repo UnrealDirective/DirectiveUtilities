@@ -62,24 +62,6 @@ namespace DirectiveUtilAsyncTaskTestHelpers
 		Listener->RemoveFromRoot();
 	}
 
-	void DestroyShutdownScenario(UDirectiveUtilDelegateListener* Listener)
-	{
-		if (!Listener)
-		{
-			return;
-		}
-
-		UGameInstance* GameInstance = Listener->ScenarioGameInstance.Get();
-		Listener->Keepalive = nullptr;
-		Listener->ScenarioWorld = nullptr;
-		Listener->ScenarioGameInstance = nullptr;
-		if (GameInstance)
-		{
-			GameInstance->RemoveFromRoot();
-		}
-		Listener->RemoveFromRoot();
-	}
-
 	UDirectiveUtilDelegateListener* StartDelayScenario(float Duration, bool bCancel, bool bUseEndTask = false)
 	{
 		UDirectiveUtilDelegateListener* Listener = CreateScenarioListener();
@@ -775,17 +757,16 @@ bool FDirectiveUtilAsyncTaskShutdownTest::RunTest(const FString& Parameters)
 			return;
 		}
 
-		GameInstance->Shutdown();
-		Task->Cancel();
-		TestFalse(*FString::Printf(TEXT("%s is inactive after shutdown cancellation"), *ScenarioName), Task->IsActive());
+		FWorldDelegates::OnWorldCleanup.Broadcast(World, true, true);
+		TestFalse(*FString::Printf(TEXT("%s is inactive after world cleanup"), *ScenarioName), Task->IsActive());
 		if (World)
 		{
 			World->GetTimerManager().Tick(10.0f);
 		}
-		TestFalse(*FString::Printf(TEXT("%s does not complete after shutdown"), *ScenarioName), Listener->bCompleted);
-		TestEqual(*FString::Printf(TEXT("%s emits no updates after shutdown"), *ScenarioName), Listener->UpdatedCount, 0);
-		TestEqual(*FString::Printf(TEXT("%s emits no iterations after shutdown"), *ScenarioName), Listener->IterationCount, 0);
-		DirectiveUtilAsyncTaskTestHelpers::DestroyShutdownScenario(Listener);
+		TestFalse(*FString::Printf(TEXT("%s does not complete after world cleanup"), *ScenarioName), Listener->bCompleted);
+		TestEqual(*FString::Printf(TEXT("%s emits no updates after world cleanup"), *ScenarioName), Listener->UpdatedCount, 0);
+		TestEqual(*FString::Printf(TEXT("%s emits no iterations after world cleanup"), *ScenarioName), Listener->IterationCount, 0);
+		DirectiveUtilAsyncTaskTestHelpers::DestroyScenario(Listener);
 	};
 
 	VerifyShutdown(DirectiveUtilAsyncTaskTestHelpers::StartDelayScenario(60.0f, false), TEXT("Cancellable Delay"));

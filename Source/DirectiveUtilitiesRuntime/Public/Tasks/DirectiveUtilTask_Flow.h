@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Engine/CancellableAsyncAction.h"
+#include "Tasks/DirectiveUtilAsyncActionBase.h"
 #include "Engine/TimerHandle.h"
 #include "DirectiveUtilTask_Flow.generated.h"
 
@@ -13,7 +13,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnRepeatIteration, int32, Index, i
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnRepeatCompleted);
 
 UCLASS(BlueprintType, meta=(ExposedAsyncProxy = AsyncTask, DisplayName="Update for Duration"))
-class DIRECTIVEUTILITIESRUNTIME_API UDirectiveUtilTask_UpdateForDuration : public UCancellableAsyncAction
+class DIRECTIVEUTILITIESRUNTIME_API UDirectiveUtilTask_UpdateForDuration : public UDirectiveUtilCancellableAsyncAction
 {
 	GENERATED_BODY()
 
@@ -62,7 +62,7 @@ private:
 };
 
 UCLASS(BlueprintType, meta=(ExposedAsyncProxy = AsyncTask, DisplayName="Repeat with Interval"))
-class DIRECTIVEUTILITIESRUNTIME_API UDirectiveUtilTask_RepeatWithInterval : public UCancellableAsyncAction
+class DIRECTIVEUTILITIESRUNTIME_API UDirectiveUtilTask_RepeatWithInterval : public UDirectiveUtilCancellableAsyncAction
 {
 	GENERATED_BODY()
 

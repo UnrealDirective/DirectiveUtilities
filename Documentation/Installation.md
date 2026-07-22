@@ -1,6 +1,6 @@
 # Installation
 
-Directive Utilities is a code plugin. It compiles three modules: `DirectiveUtilitiesRuntime` (Runtime), `DirectiveUtilitiesEditor` (Editor), and `DirectiveUtilitiesTests` (Editor-only automation tests). See [Compatibility](Compatibility.md) for supported engine versions and platforms.
+Directive Utilities is a code plugin. It contains runtime, Blueprint compiler, editor, and test modules. See [Compatibility](Compatibility.md) for their target boundaries and supported platforms.
 
 ## Before You Start
 

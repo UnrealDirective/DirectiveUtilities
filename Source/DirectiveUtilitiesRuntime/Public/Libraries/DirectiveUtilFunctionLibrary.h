@@ -47,14 +47,14 @@ public:
 	 * Get the content from the clipboard as FText.
 	 * @returns The text from the clipboard.
 	 */
-	UFUNCTION(BlueprintPure, Category = "Directive Utilities|Clipboard" )
+	UFUNCTION(BlueprintCallable, Category = "Directive Utilities|Clipboard" )
 	static FText GetTextFromClipboard();
 
 	/**
 	 * Get the content from the clipboard as an FString.
 	 * @returns The content from the clipboard as a string.
 	 */
-	UFUNCTION(BlueprintPure, Category = "Directive Utilities|Clipboard" )
+	UFUNCTION(BlueprintCallable, Category = "Directive Utilities|Clipboard" )
 	static FString GetStringFromClipboard();
 
 	/**

@@ -13,6 +13,7 @@ class USaveGame;
  * Save-slot utilities that fill the gaps left by UGameplayStatics: enumerating slots, reading slot
  * timestamps, and serializing a save object to/from an in-memory byte array. This is slot/IO QoL only,
  * not a save framework: use the engine's SaveGameToSlot/LoadGameFromSlot for the actual slot I/O.
+ * Slot operations accept flat file names so they behave consistently across platform save backends.
  */
 UCLASS()
 class DIRECTIVEUTILITIESRUNTIME_API UDirectiveUtilSaveGameFunctionLibrary : public UBlueprintFunctionLibrary

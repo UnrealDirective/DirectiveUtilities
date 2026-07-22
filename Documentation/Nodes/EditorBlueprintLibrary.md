@@ -68,7 +68,9 @@ Searches construction-script components declared by the Blueprint or an inherite
 **Type:** Blueprint Pure &nbsp;|&nbsp; **Category:** `Directive Utilities|Editor|Blueprint Inspection`
 
 ```cpp
-static TArray<FName> GetUnusedBlueprintVariables(UBlueprint* Blueprint);
+static TArray<FName> GetUnusedBlueprintVariables(
+    UBlueprint* Blueprint,
+    bool bIncludeExternallyAccessibleVariables = false);
 ```
 
-Returns member-variable names that Unreal's Blueprint analysis marks unused. The result is sorted by name. A null Blueprint returns an empty array.
+Returns private member-variable names that Unreal's Blueprint analysis marks unused. Public and protected variables are omitted by default because another Blueprint may reference them. Set `bIncludeExternallyAccessibleVariables` to true to include them. The result is sorted by name. A null Blueprint returns an empty array.

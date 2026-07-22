@@ -43,5 +43,7 @@ public:
 		bool bIncludeDerivedComponents = true);
 
 	UFUNCTION(BlueprintPure, Category = "Directive Utilities|Editor|Blueprint Inspection")
-	static TArray<FName> GetUnusedBlueprintVariables(UBlueprint* Blueprint);
+	static TArray<FName> GetUnusedBlueprintVariables(
+		UBlueprint* Blueprint,
+		bool bIncludeExternallyAccessibleVariables = false);
 };

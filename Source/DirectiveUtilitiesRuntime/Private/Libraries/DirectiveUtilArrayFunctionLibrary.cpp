@@ -10,6 +10,8 @@
 
 namespace
 {
+	constexpr int32 MaxSampleCount = 1'000'000;
+
 	class FArrayResultBuilder
 	{
 	public:
@@ -771,7 +773,7 @@ void UDirectiveUtilArrayFunctionLibrary::GenericArray_Sample(
 
 	FScriptArrayHelper SourceHelper(TargetArrayProperty, TargetArray);
 	const int32 SourceCount = SourceHelper.Num();
-	if (Count <= 0 || SourceCount == 0)
+	if (Count <= 0 || Count > MaxSampleCount || SourceCount == 0)
 	{
 		FArrayResultBuilder EmptyResult(OutArrayProperty, 0);
 		EmptyResult.MoveTo(OutArray);
@@ -870,7 +872,7 @@ bool UDirectiveUtilArrayFunctionLibrary::GenericArray_SampleWeighted(
 
 	FScriptArrayHelper SourceHelper(TargetArrayProperty, TargetArray);
 	const int32 SourceCount = SourceHelper.Num();
-	if (Count < 0 || Weights.Num() != SourceCount)
+	if (Count < 0 || Count > MaxSampleCount || Weights.Num() != SourceCount)
 	{
 		FArrayResultBuilder EmptyResult(OutArrayProperty, 0);
 		EmptyResult.MoveTo(OutArray);
@@ -1016,7 +1018,8 @@ bool UDirectiveUtilArrayFunctionLibrary::GenericArray_GetPage(
 		return false;
 	}
 
-	const int32 PageCount = FMath::DivideAndRoundUp(SourceHelper.Num(), PageSize);
+	const int32 SourceCount = SourceHelper.Num();
+	const int32 PageCount = SourceCount == 0 ? 0 : 1 + (SourceCount - 1) / PageSize;
 	if (OutPageCount)
 	{
 		*OutPageCount = PageCount;
@@ -1029,7 +1032,7 @@ bool UDirectiveUtilArrayFunctionLibrary::GenericArray_GetPage(
 	}
 
 	const int32 StartIndex = PageIndex * PageSize;
-	const int32 EndIndex = FMath::Min(StartIndex + PageSize, SourceHelper.Num());
+	const int32 EndIndex = StartIndex + FMath::Min(PageSize, SourceCount - StartIndex);
 	const FProperty* InnerProperty = TargetArrayProperty->Inner;
 	FArrayResultBuilder Result(OutArrayProperty, EndIndex - StartIndex);
 	for (int32 SourceIndex = StartIndex; SourceIndex < EndIndex; ++SourceIndex)

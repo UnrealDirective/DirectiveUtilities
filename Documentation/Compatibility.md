@@ -14,7 +14,7 @@ Directive Utilities follows a rolling **"latest three engine versions"** support
 
 UE 5.5 and earlier are **not supported**. The workaround for the `UEditorActorSubsystem` regression tracked in [#6](https://github.com/UnrealDirective/DirectiveUtilities/issues/6) was removed when 5.5 dropped out of the support window.
 
-The plugin descriptor intentionally omits an `EngineVersion` field so the source distribution installs on any of the supported engines.
+The repository descriptor omits `EngineVersion` so Git installations work across the supported range. Release packages set the engine version in their copied descriptor.
 
 ## Platforms
 
@@ -29,6 +29,7 @@ The plugin descriptor intentionally omits an `EngineVersion` field so the source
 | Module | Type | Ships in packaged game? |
 |--------|------|--------------------------|
 | `DirectiveUtilitiesRuntime` | Runtime | Yes: this is the only module that ships. |
+| `DirectiveUtilitiesBlueprintNodes` | UncookedOnly | No: Blueprint compiler support only. |
 | `DirectiveUtilitiesEditor` | Editor | No: editor builds only. |
 | `DirectiveUtilitiesTests` | DeveloperTool (Editor target only) | No: automation tests, excluded from all packaged games. |
 

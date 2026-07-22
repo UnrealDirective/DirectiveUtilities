@@ -26,9 +26,7 @@ public:
 	void Finish();
 
 	void Initialize(float TotalWork, const FText& Description, bool bCanCancel, bool bShowDialog);
-
-protected:
-	virtual void BeginDestroy() override;
+	static void FinishActiveTask();
 
 private:
 	FScopedSlowTask* SlowTask = nullptr;

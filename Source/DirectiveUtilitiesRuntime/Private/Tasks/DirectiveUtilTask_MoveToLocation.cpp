@@ -15,6 +15,11 @@ namespace
 	{
 		return FMath::IsFinite(Value) ? FMath::Max(Value, 0.0f) : 0.0f;
 	}
+
+	bool IsWithinAcceptanceRadius(const FVector& CurrentLocation, const FVector& TargetLocation, const float AcceptanceRadius)
+	{
+		return FVector::DistSquared2D(CurrentLocation, TargetLocation) <= FMath::Square(AcceptanceRadius);
+	}
 }
 
 UDirectiveUtilTask_MoveToLocation* UDirectiveUtilTask_MoveToLocation::MoveToLocation(
@@ -45,6 +50,10 @@ UDirectiveUtilTask_MoveToLocation* UDirectiveUtilTask_MoveToLocation::MoveToLoca
 
 void UDirectiveUtilTask_MoveToLocation::EndTask()
 {
+	if (IsValid(Controller))
+	{
+		Controller->StopMovement();
+	}
 	ExecuteCompleted(false);
 }
 
@@ -107,7 +116,7 @@ void UDirectiveUtilTask_MoveToLocation::CheckMoveToLocation()
 	CurrentLocation = Pawn->GetActorLocation();
 	UE_LOG(LogDirectiveUtil, Verbose, TEXT("Controller is moving to location (%s). Current distance: %f."), *Destination.ToString(), FVector::Dist(CurrentLocation, Destination));
 
-	if (FVector::Dist(CurrentLocation, Destination) <= AcceptanceRadius)
+	if (IsWithinAcceptanceRadius(CurrentLocation, Destination, AcceptanceRadius))
 	{
 		UE_LOG(LogDirectiveUtil, Verbose, TEXT("Controller has moved to location."));
 		ExecuteCompleted(true);
@@ -118,7 +127,7 @@ void UDirectiveUtilTask_MoveToLocation::CheckMoveToLocation()
 	if (!PathFollowing || PathFollowing->GetStatus() == EPathFollowingStatus::Idle)
 	{
 		UE_LOG(LogDirectiveUtil, Verbose, TEXT("Path following has stopped. Completing move to location."));
-		ExecuteCompleted(FVector::Dist(CurrentLocation, Destination) <= AcceptanceRadius);
+		ExecuteCompleted(IsWithinAcceptanceRadius(CurrentLocation, Destination, AcceptanceRadius));
 	}
 }
 
@@ -149,7 +158,7 @@ void UDirectiveUtilTask_MoveToLocation::ExecuteCompleted(const bool bSuccess)
 	}
 	bHasCompleted = true;
 
-	UE_LOG(LogDirectiveUtil, Log, TEXT("Movement to location completed. Success: %s."), bSuccess ? TEXT("true") : TEXT("false"));
+	UE_LOG(LogDirectiveUtil, Verbose, TEXT("Movement to location completed. Success: %s."), bSuccess ? TEXT("true") : TEXT("false"));
 
 	if (UWorld* World = TimerWorld.Get())
 	{
@@ -191,6 +200,10 @@ UDirectiveUtilTask_MoveToActor* UDirectiveUtilTask_MoveToActor::MoveToActor(
 
 void UDirectiveUtilTask_MoveToActor::EndTask()
 {
+	if (IsValid(Controller))
+	{
+		Controller->StopMovement();
+	}
 	ExecuteCompleted(false);
 }
 
@@ -248,7 +261,7 @@ void UDirectiveUtilTask_MoveToActor::CheckMoveToActor()
 	CurrentLocation = Pawn->GetActorLocation();
 	UE_LOG(LogDirectiveUtil, Verbose, TEXT("Controller is moving to actor (%s). Current distance: %f."), *GetNameSafe(Goal), FVector::Dist(CurrentLocation, GoalLocation));
 
-	if (FVector::Dist(CurrentLocation, GoalLocation) <= AcceptanceRadius)
+	if (IsWithinAcceptanceRadius(CurrentLocation, GoalLocation, AcceptanceRadius))
 	{
 		UE_LOG(LogDirectiveUtil, Verbose, TEXT("Controller has moved to actor."));
 		ExecuteCompleted(true);
@@ -259,7 +272,7 @@ void UDirectiveUtilTask_MoveToActor::CheckMoveToActor()
 	if (!PathFollowing || PathFollowing->GetStatus() == EPathFollowingStatus::Idle)
 	{
 		UE_LOG(LogDirectiveUtil, Verbose, TEXT("Path following has stopped. Completing move to actor."));
-		ExecuteCompleted(FVector::Dist(CurrentLocation, GoalLocation) <= AcceptanceRadius);
+		ExecuteCompleted(IsWithinAcceptanceRadius(CurrentLocation, GoalLocation, AcceptanceRadius));
 	}
 }
 
@@ -290,7 +303,7 @@ void UDirectiveUtilTask_MoveToActor::ExecuteCompleted(const bool bSuccess)
 	}
 	bHasCompleted = true;
 
-	UE_LOG(LogDirectiveUtil, Log, TEXT("Movement to actor completed. Success: %s."), bSuccess ? TEXT("true") : TEXT("false"));
+	UE_LOG(LogDirectiveUtil, Verbose, TEXT("Movement to actor completed. Success: %s."), bSuccess ? TEXT("true") : TEXT("false"));
 
 	if (UWorld* World = TimerWorld.Get())
 	{

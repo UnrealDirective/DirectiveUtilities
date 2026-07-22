@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Unreal Directive. Licensed under the MIT License.
+
 #if WITH_EDITOR
 
 #include "AssetRegistry/AssetData.h"

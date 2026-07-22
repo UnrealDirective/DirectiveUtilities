@@ -69,10 +69,16 @@ bool FDirectiveUtilEditorTaskLibraryTest::RunTest(const FString& Parameters)
 	AbandonedTask->Initialize(1.0f, FText::FromString(TEXT("Abandoned task")), false, false);
 	TestTrue("An unfinished slow task should be active before collection", AbandonedTask->IsActive());
 	CollectGarbage(RF_NoFlags);
-	TestFalse("An unfinished slow task should be collected safely", AbandonedTask.IsValid());
+	TestTrue("An unfinished slow task should stay alive until Finish", AbandonedTask.IsValid());
+	if (AbandonedTask.IsValid())
+	{
+		AbandonedTask->Finish();
+	}
+	CollectGarbage(RF_NoFlags);
+	TestFalse("A finished slow task should be collectable", AbandonedTask.IsValid());
 	UDirectiveUtilEditorSlowTask* TaskAfterCollection = NewObject<UDirectiveUtilEditorSlowTask>();
 	TaskAfterCollection->Initialize(1.0f, FText::FromString(TEXT("Task after collection")), false, false);
-	TestTrue("A slow task should start after an unfinished task is collected", TaskAfterCollection->IsActive());
+	TestTrue("A slow task should start after the previous task is collected", TaskAfterCollection->IsActive());
 	TaskAfterCollection->Finish();
 
 	TestTrue(

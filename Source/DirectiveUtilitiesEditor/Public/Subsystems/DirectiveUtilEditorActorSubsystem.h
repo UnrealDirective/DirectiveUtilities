@@ -703,7 +703,7 @@ public:
 	 * Returns a list of invalid actors.
 	 * @param FoundActors The list of actors that were found.
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Directive Utilities|Select", meta=(AdvancedDisplay=1))
+	UFUNCTION(BlueprintCallable, Category = "Directive Utilities|Select", meta=(DeprecatedFunction, DeprecationMessage="Actor enumeration excludes invalid actors. This node always returns an empty array."))
 	void GetInvalidActors(TArray<AActor*>& FoundActors);
 
 	//-----------------------------

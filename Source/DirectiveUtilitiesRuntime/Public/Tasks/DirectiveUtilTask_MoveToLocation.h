@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Kismet/BlueprintAsyncActionBase.h"
+#include "Tasks/DirectiveUtilAsyncActionBase.h"
 #include "GameFramework/Controller.h"
 #include "DirectiveUtilTask_MoveToLocation.generated.h"
 
@@ -15,7 +15,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAsyncMoveToActor, bool, bSuccess)
  * Asynchronously moves an actor to a location.
  */
 UCLASS(BlueprintType, meta=(ExposedAsyncProxy = AsyncTask, DisplayName="Async Move To Location"))
-class DIRECTIVEUTILITIESRUNTIME_API UDirectiveUtilTask_MoveToLocation : public UBlueprintAsyncActionBase
+class DIRECTIVEUTILITIESRUNTIME_API UDirectiveUtilTask_MoveToLocation : public UDirectiveUtilAsyncActionBase
 {
 	GENERATED_BODY()
 
@@ -102,7 +102,7 @@ protected:
  * Asynchronously moves an actor to another actor.
  */
 UCLASS(BlueprintType, meta=(ExposedAsyncProxy = AsyncTask, DisplayName="Async Move To Actor"))
-class DIRECTIVEUTILITIESRUNTIME_API UDirectiveUtilTask_MoveToActor : public UBlueprintAsyncActionBase
+class DIRECTIVEUTILITIESRUNTIME_API UDirectiveUtilTask_MoveToActor : public UDirectiveUtilAsyncActionBase
 {
 	GENERATED_BODY()
 

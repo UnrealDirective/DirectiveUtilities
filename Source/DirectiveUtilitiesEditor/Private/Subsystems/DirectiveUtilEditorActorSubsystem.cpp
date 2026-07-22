@@ -13,6 +13,7 @@
 #include "Materials/MaterialInterface.h"
 #include "Materials/MaterialExpressionTextureObject.h"
 #include "EditorViewportClient.h"
+#include "LevelEditorViewport.h"
 #include "Components/BoxComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SphereComponent.h"
@@ -216,23 +217,23 @@ namespace
 
 void UDirectiveUtilEditorActorSubsystem::FocusActorsInViewport(const TArray<AActor*> Actors, const bool bInstant)
 {
-	if (Actors.Num() == 0) { return; }
-	if (!GEditor) { return; }
-
-	FViewport* ActiveViewport = GEditor->GetActiveViewport();
-	if (!ActiveViewport) { return; }
-
-	FEditorViewportClient* ViewportClient = static_cast<FEditorViewportClient*>(ActiveViewport->GetClient());
-	if (!ViewportClient) { return; }
+	if (!GCurrentLevelEditingViewportClient) { return; }
 
 	FBox BoundingBox = FBox(ForceInit);
-	for (const auto Actor : Actors)
+	for (const AActor* Actor : Actors)
 	{
-		if (!Actor) { continue; }
-		BoundingBox += Actor->GetComponentsBoundingBox(true, true);
+		if (!IsValid(Actor)) { continue; }
+		const FBox ActorBounds = Actor->GetComponentsBoundingBox(true, true);
+		if (ActorBounds.IsValid)
+		{
+			BoundingBox += ActorBounds;
+		}
 	}
 
-	ViewportClient->FocusViewportOnBox(BoundingBox, bInstant);
+	if (BoundingBox.IsValid)
+	{
+		GCurrentLevelEditingViewportClient->FocusViewportOnBox(BoundingBox, bInstant);
+	}
 }
 
 TArray<UClass*> UDirectiveUtilEditorActorSubsystem::GetAllLevelClasses()
@@ -1736,8 +1737,7 @@ void UDirectiveUtilEditorActorSubsystem::GetActorsByTextureName(
 
 void UDirectiveUtilEditorActorSubsystem::GetInvalidActors(TArray<AActor*>& FoundActors)
 {
-	for (AActor* Actor : GetAllLevelActors()) { if (!IsValid(Actor)) { FoundActors.AddUnique(Actor); } }
-	UE_LOG(LogDirectiveUtilEditor, Display, TEXT("%i invalid actors were found."), FoundActors.Num());
+	FoundActors.Reset();
 }
 
 void UDirectiveUtilEditorActorSubsystem::PushOverrideMaterialsToSource(UStaticMeshComponent* StaticMeshComponent)

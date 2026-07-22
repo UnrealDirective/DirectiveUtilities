@@ -176,7 +176,7 @@ public:
 	/**
 	 * Returns randomly selected elements from the array.
 	 * @param TargetArray The array to sample.
-	 * @param Count The requested number of elements.
+	 * @param Count The requested number of elements, up to 1,000,000.
 	 * @param bWithReplacement Whether the same source element can be selected more than once.
 	 * @param OutArray The sampled elements.
 	 */
@@ -186,7 +186,7 @@ public:
 	/**
 	 * Returns randomly selected elements using a random stream.
 	 * @param TargetArray The array to sample.
-	 * @param Count The requested number of elements.
+	 * @param Count The requested number of elements, up to 1,000,000.
 	 * @param bWithReplacement Whether the same source element can be selected more than once.
 	 * @param RandomStream The stream used to select elements.
 	 * @param OutArray The sampled elements.
@@ -198,7 +198,7 @@ public:
 	 * Returns randomly selected elements using per-element weights.
 	 * @param TargetArray The array to sample.
 	 * @param Weights The selection weight for each source element.
-	 * @param Count The requested number of elements.
+	 * @param Count The requested number of elements, up to 1,000,000.
 	 * @param bWithReplacement Whether the same source element can be selected more than once.
 	 * @param OutArray The sampled elements.
 	 * @returns True when the inputs were valid and the sample was produced.
@@ -210,7 +210,7 @@ public:
 	 * Returns randomly selected elements using per-element weights and a random stream.
 	 * @param TargetArray The array to sample.
 	 * @param Weights The selection weight for each source element.
-	 * @param Count The requested number of elements.
+	 * @param Count The requested number of elements, up to 1,000,000.
 	 * @param bWithReplacement Whether the same source element can be selected more than once.
 	 * @param RandomStream The stream used to select elements.
 	 * @param OutArray The sampled elements.

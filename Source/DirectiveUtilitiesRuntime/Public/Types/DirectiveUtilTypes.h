@@ -1,4 +1,6 @@
-﻿#pragma once
+﻿// Copyright (c) 2026 Unreal Directive. Licensed under the MIT License.
+
+#pragma once
 
 #include "CoreMinimal.h"
 #include "DirectiveUtilTypes.generated.h"

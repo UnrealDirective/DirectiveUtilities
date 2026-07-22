@@ -242,7 +242,9 @@ TArray<FAssetData> UDirectiveUtilEditorBlueprintLibrary::FindBlueprintsContainin
 	return Matches;
 }
 
-TArray<FName> UDirectiveUtilEditorBlueprintLibrary::GetUnusedBlueprintVariables(UBlueprint* Blueprint)
+TArray<FName> UDirectiveUtilEditorBlueprintLibrary::GetUnusedBlueprintVariables(
+	UBlueprint* Blueprint,
+	const bool bIncludeExternallyAccessibleVariables)
 {
 	TArray<FName> Names;
 	if (!IsValid(Blueprint))
@@ -256,7 +258,7 @@ TArray<FName> UDirectiveUtilEditorBlueprintLibrary::GetUnusedBlueprintVariables(
 	Names.Reserve(UnusedVariables.Num());
 	for (const FProperty* Variable : UnusedVariables)
 	{
-		if (Variable)
+		if (Variable && (bIncludeExternallyAccessibleVariables || FBlueprintEditorUtils::IsPropertyPrivate(Variable)))
 		{
 			Names.Add(Variable->GetFName());
 		}

@@ -113,6 +113,12 @@ bool FDirectiveUtilEditorBlueprintLibraryTest::RunTest(const FString& Parameters
 	TestTrue(
 		TEXT("The inspection fixture adds an unused variable"),
 		FBlueprintEditorUtils::AddMemberVariable(InspectionBlueprint, TEXT("UnusedValue"), VariableType));
+	FBlueprintEditorUtils::SetBlueprintVariableMetaData(
+		InspectionBlueprint,
+		TEXT("UnusedValue"),
+		nullptr,
+		FBlueprintMetadata::MD_Private,
+		TEXT("true"));
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(InspectionBlueprint);
 	FKismetEditorUtilities::CompileBlueprint(InspectionBlueprint);
 	FAssetRegistryModule::AssetCreated(InspectionBlueprint);
