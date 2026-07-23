@@ -61,7 +61,7 @@ foreach ($TestSource in Get-Content (Join-Path $RepositoryRoot "Tests\RuntimeHos
 }
 Copy-Item (Join-Path $RuntimeTestSourceRoot "Public\Tests\DirectiveUtilTestObject.h") $RuntimeTestPublicRoot
 
-& $BuildScript DirectiveUtilitiesRuntimeHostEditor Win64 Development "-Project=$ProjectFile" -WaitMutex -NoHotReload
+& $BuildScript DirectiveUtilitiesRuntimeHostEditor Win64 Development "-Project=$ProjectFile" -WaitMutex -NoHotReload -ForceUnity -DisableAdaptiveUnity
 if ($LASTEXITCODE -ne 0) {
     throw "Editor target build failed."
 }

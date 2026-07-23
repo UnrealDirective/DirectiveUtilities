@@ -76,7 +76,9 @@ cp "$RUNTIME_TEST_SOURCE_ROOT/Public/Tests/DirectiveUtilTestObject.h" "$RUNTIME_
 "$BUILD_SCRIPT" DirectiveUtilitiesRuntimeHostEditor "$PLATFORM" Development \
 	-Project="$PROJECT_FILE" \
 	-WaitMutex \
-	-NoHotReload
+	-NoHotReload \
+	-ForceUnity \
+	-DisableAdaptiveUnity
 
 "$EDITOR_COMMAND" "$PROJECT_FILE" \
 	-ExecCmds="Automation RunTests DirectiveUtilities; Quit" \

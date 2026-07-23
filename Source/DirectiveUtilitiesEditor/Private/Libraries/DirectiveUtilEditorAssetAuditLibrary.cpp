@@ -15,7 +15,7 @@ namespace
 {
 	using namespace UE::AssetRegistry;
 
-	bool IsInsidePath(const FName PackageName, const FName Path)
+	bool IsPackageInsideAuditPath(const FName PackageName, const FName Path)
 	{
 		const FString Package = PackageName.ToString();
 		FString Parent = Path.ToString();
@@ -48,7 +48,7 @@ namespace
 
 		for (const FName Path : Options.ExcludedPackagePaths)
 		{
-			if (IsInsidePath(Asset.PackageName, Path))
+			if (IsPackageInsideAuditPath(Asset.PackageName, Path))
 			{
 				return true;
 			}

@@ -17,7 +17,7 @@
 
 namespace
 {
-	bool IsInsidePath(const FName PackageName, const FName Path)
+	bool IsPackageInsideBlueprintSearchPath(const FName PackageName, const FName Path)
 	{
 		const FString Package = PackageName.ToString();
 		FString Parent = Path.ToString();
@@ -53,7 +53,7 @@ namespace
 		Assets.RemoveAll([&Options](const FAssetData& Asset) {
 			for (const FName Path : Options.ExcludedPackagePaths)
 			{
-				if (IsInsidePath(Asset.PackageName, Path))
+				if (IsPackageInsideBlueprintSearchPath(Asset.PackageName, Path))
 				{
 					return true;
 				}

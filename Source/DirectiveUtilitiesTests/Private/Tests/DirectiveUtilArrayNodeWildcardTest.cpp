@@ -13,7 +13,7 @@
 #include "Libraries/DirectiveUtilArrayFunctionLibrary.h"
 #include "Tests/DirectiveUtilTestObject.h"
 
-namespace
+namespace DirectiveUtilArrayNodeTest
 {
 	struct FDependentPin
 	{
@@ -100,6 +100,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FDirectiveUtilArrayNodeWildcardTest::RunTest(const FString& Parameters)
 {
+	using namespace DirectiveUtilArrayNodeTest;
+
 	const TArray<FArrayNodeCase> NodeCases = {
 		{GET_FUNCTION_NAME_CHECKED(UDirectiveUtilArrayFunctionLibrary, Array_NextIndex), {}},
 		{GET_FUNCTION_NAME_CHECKED(UDirectiveUtilArrayFunctionLibrary, Array_PreviousIndex), {}},
