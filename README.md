@@ -109,6 +109,8 @@ Editor modules and editor-only targets can depend on `DirectiveUtilitiesEditor`.
 
 ## Contributing
 
+Follow the [coding standards](Documentation/Coding-Standards.md) for source, tests, and documentation.
+
 When behavior changes, update its implementation and tests together. Revise the matching page under `Documentation/Nodes/` in the same pull request, then build the plugin for each affected engine version.
 
 Use the local [runtime test host](Tests/RuntimeHost/README.md) to run the automation suite in both Unreal Editor and a packaged Development game. Generated projects and reports are written under `Build/RuntimeHost`.

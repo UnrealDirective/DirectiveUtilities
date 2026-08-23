@@ -14,6 +14,7 @@ This folder contains setup steps, compatibility details, and node documentation 
 - [Installation](Installation.md) - add Directive Utilities to a project, verify the install, and troubleshoot common setup problems.
 - [Compatibility](Compatibility.md) - supported engine versions, platforms, module layout, and packaged-game behavior.
 - [Migration 2.0](Migration-2.0.md) - rename tables and upgrade steps for projects moving from UDCore 1.x.
+- [Coding Standards](Coding-Standards.md) - rules for contributing source, tests, and documentation.
 
 ## Node Reference
 Per-library reference for every Blueprint-exposed node. Each page lists the module, header, Blueprint category, C++ signature, parameters, outputs, and return behavior.
