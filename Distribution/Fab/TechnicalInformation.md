@@ -6,7 +6,7 @@ Source Code: https://github.com/UnrealDirective/DirectiveUtilities
 
 ## Features
 
-- Runtime Blueprint libraries for arrays, maps, strings, text, regular expressions, math, Gameplay Tags, save games, input, clipboard access, and project context.
+- Runtime Blueprint libraries for arrays, maps, strings, text, regular expressions, math, Gameplay Tags, save games, input, file I/O, CSV, DataTables, config files, date and time, bytes, clipboard access, and project context.
 - Async Blueprint actions for timed updates, repeated work, asset loading, traces, and AI movement.
 - Read-only editor searches and content audits for assets and Blueprints.
 - Actor layout, filtering, selection, viewport, material, and mesh utilities for editor scripts.
@@ -21,7 +21,7 @@ Source Code: https://github.com/UnrealDirective/DirectiveUtilities
 
 Number of Blueprints: 0
 
-Number of C++ Classes: 28 production UCLASS types
+Number of C++ Classes: 34 production UCLASS types
 
 Network Replicated: No. The utilities run locally and can be called from replicated gameplay code.
 
@@ -37,12 +37,13 @@ Example Project: Not included
 
 Supported Unreal Engine versions: 5.6, 5.7, and 5.8
 
-Engine plugin dependencies:
+Engine dependencies:
 
 - Enhanced Input, used by the runtime input utilities
 - Editor Scripting Utilities, used by the editor-only utilities
+- zlib, supplied by Unreal Engine and used for zlib and gzip byte streams
 
-Both dependencies ship with Unreal Engine and are enabled by the plugin descriptor. The plugin has no third-party libraries or external services. Source compilation requires the C++ toolchain supported by the selected Unreal Engine installation.
+Enhanced Input and Editor Scripting Utilities are enabled by the plugin descriptor. zlib is linked from Unreal Engine's bundled third-party libraries. The plugin has no external services or separately installed libraries. Source compilation requires the C++ toolchain supported by the selected Unreal Engine installation.
 
 ## Important notes
 

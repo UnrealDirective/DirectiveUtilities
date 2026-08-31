@@ -17,6 +17,11 @@ Version 2.0 replaces UDCore 1.x. Existing Blueprint assets migrate through bundl
 | Gameplay Tags | Hierarchy navigation, ancestry checks, sibling queries, and registry search. |
 | Save games | Slot enumeration, timestamps, byte serialization, validation, deletion, and renaming. |
 | Enhanced Input | Subsystem access and mapping-context operations. |
+| File I/O | Text and binary reads and writes, append, atomic replacement, sizes, and timestamps. Unreal's existing nodes cover copy, move, delete, and directory operations. |
+| CSV and DataTables | RFC-style quoted-field parsing and writing, keyed edits and diffs, schema checks, runtime UDataTable import, safe replacement, export, and row diffs. |
+| Config files | .ini reads and writes for scalar, vector, rotation, color, and string-array values, plus key and section management. |
+| Date and time | Custom pattern formatting and parsing, UTC/local conversion, and duration formatting. |
+| Binary data | Zlib and gzip compression, SHA-256 hashing, and HMAC-SHA256 signing. |
 | Async work | Timed flow, asset and class loading, traces, and navigation movement. |
 | Runtime context and profiling | Typed world, build configuration, build target queries, and keyed stopwatches. |
 | Editor actors | Actor filters, selection tools, viewport controls, layout operations, surface snapping, material operations, and mesh queries. |

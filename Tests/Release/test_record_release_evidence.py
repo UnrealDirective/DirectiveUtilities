@@ -88,6 +88,44 @@ class ReleaseEvidenceTest(unittest.TestCase):
         self.assertIn('"-TargetPlatforms=Win64"', windows_script)
         self.assertIn('-TargetPlatforms="$TARGET_PLATFORM"', unix_script)
 
+    def test_windows_fab_verifier_caps_compile_concurrency(self) -> None:
+        windows_script = (
+            REPOSITORY_ROOT / "Tools" / "Release" / "verify-fab-artifacts.ps1"
+        ).read_text(encoding="utf-8")
+        windows_gate = (
+            REPOSITORY_ROOT / "Tools" / "Release" / "run-local-release-gate.ps1"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            '$env:UnrealBuildTool_BuildConfiguration__MaxParallelActions = "$MaxParallelActions"',
+            windows_script,
+        )
+        self.assertIn(
+            '$env:UnrealBuildTool_BuildConfiguration__bAllowUBAExecutor = "false"',
+            windows_script,
+        )
+        self.assertIn(
+            '$env:UnrealBuildTool_BuildConfiguration__MaxParallelActions = $PreviousMaxParallelActions',
+            windows_script,
+        )
+        self.assertIn(
+            '$env:UnrealBuildTool_BuildConfiguration__bAllowUBAExecutor = $PreviousAllowUbaExecutor',
+            windows_script,
+        )
+        self.assertIn(
+            'Remove-Item Env:\\UnrealBuildTool_BuildConfiguration__MaxParallelActions',
+            windows_script,
+        )
+        self.assertIn(
+            'Remove-Item Env:\\UnrealBuildTool_BuildConfiguration__bAllowUBAExecutor',
+            windows_script,
+        )
+        self.assertNotIn("UBT_EXTRA_ARGS", windows_script)
+        self.assertNotIn('"-ubtargs=', windows_script)
+        self.assertIn(
+            "-MaxParallelActions $WindowsMaxParallelActions",
+            windows_gate,
+        )
+
     def test_windows_runtime_runner_checks_generated_path_length(self) -> None:
         windows_runner = (
             REPOSITORY_ROOT / "Tests" / "RuntimeHost" / "Scripts" / "run-windows.ps1"
@@ -100,6 +138,47 @@ class ReleaseEvidenceTest(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("[System.Diagnostics.Process]::new()", windows_runner)
         self.assertNotIn("Start-Process", windows_runner)
+
+    def test_windows_runtime_runner_caps_compile_concurrency(self) -> None:
+        windows_runner = (
+            REPOSITORY_ROOT / "Tests" / "RuntimeHost" / "Scripts" / "run-windows.ps1"
+        ).read_text(encoding="utf-8")
+        self.assertIn('"-MaxParallelActions=$MaxParallelActions"', windows_runner)
+        self.assertIn(
+            '"-ubtargs=-NoUBA -MaxParallelActions=$MaxParallelActions"',
+            windows_runner,
+        )
+
+    def test_windows_release_gate_caps_linux_cross_compile_concurrency(self) -> None:
+        windows_gate = (
+            REPOSITORY_ROOT / "Tools" / "Release" / "run-local-release-gate.ps1"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            '$env:UnrealBuildTool_BuildConfiguration__MaxParallelActions = "$WindowsMaxParallelActions"',
+            windows_gate,
+        )
+        self.assertIn(
+            '$env:UnrealBuildTool_BuildConfiguration__bAllowUBAExecutor = "false"',
+            windows_gate,
+        )
+        self.assertIn(
+            '$env:UnrealBuildTool_BuildConfiguration__MaxParallelActions = $PreviousMaxParallelActions',
+            windows_gate,
+        )
+        self.assertIn(
+            '$env:UnrealBuildTool_BuildConfiguration__bAllowUBAExecutor = $PreviousAllowUbaExecutor',
+            windows_gate,
+        )
+        self.assertIn(
+            'Remove-Item Env:\\UnrealBuildTool_BuildConfiguration__MaxParallelActions',
+            windows_gate,
+        )
+        self.assertIn(
+            'Remove-Item Env:\\UnrealBuildTool_BuildConfiguration__bAllowUBAExecutor',
+            windows_gate,
+        )
+        self.assertNotIn("UBT_EXTRA_ARGS", windows_gate)
+        self.assertNotIn('"-ubtargs=', windows_gate)
 
     def test_mac_packaged_report_uses_container_path(self) -> None:
         unix_runner = (

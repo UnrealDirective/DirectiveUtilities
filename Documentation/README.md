@@ -30,6 +30,12 @@ Per-library reference for every Blueprint-exposed node. Each page lists the modu
 - [Gameplay Tag Function Library](Nodes/GameplayTagFunctionLibrary.md) - tag hierarchy helpers and registry search.
 - [Save Game Function Library](Nodes/SaveGameFunctionLibrary.md) - save-slot enumeration, timestamps, byte serialization, and slot management.
 - [Input Function Library](Nodes/InputFunctionLibrary.md) - Enhanced Input helpers.
+- [File System Function Library](Nodes/FileSystemFunctionLibrary.md) - text and binary I/O, atomic replacement, size, and timestamps.
+- [CSV Function Library](Nodes/CsvFunctionLibrary.md) - quoted-field parsing, keyed edits, validation, and diffing.
+- [Data Table Function Library](Nodes/DataTableFunctionLibrary.md) - runtime CSV import, safe replacement, export, and row diffing.
+- [Config Function Library](Nodes/ConfigFunctionLibrary.md) - .ini reads and writes for scalar, vector, rotation, color, array, key, and section values.
+- [Date Time Function Library](Nodes/DateTimeFunctionLibrary.md) - custom pattern format and parse, timezone conversion, and duration formatting.
+- [Bytes Function Library](Nodes/BytesFunctionLibrary.md) - zlib and gzip compression, SHA-256 hashing, and HMAC-SHA256 signing.
 - [Async Tasks](Nodes/AsyncTasks.md) - timed flow, asset loading, traces, and movement.
 
 ### Editor

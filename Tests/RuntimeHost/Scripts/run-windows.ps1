@@ -8,6 +8,9 @@ param(
     [ValidateRange(1, 86400)]
     [int]$TestTimeoutSeconds = 1800,
 
+    [ValidateRange(1, 128)]
+    [int]$MaxParallelActions = 8,
+
     [switch]$StompMalloc
 )
 
@@ -31,8 +34,8 @@ $BuildScript = Join-Path $EngineRoot "Engine\Build\BatchFiles\Build.bat"
 $RunUAT = Join-Path $EngineRoot "Engine\Build\BatchFiles\RunUAT.bat"
 $EditorCommand = Join-Path $EngineRoot "Engine\Binaries\Win64\UnrealEditor-Cmd.exe"
 $LongestActionPath = Join-Path $ProjectRoot "Plugins\DirectiveUtilities\Intermediate\Build\Win64\x64\UnrealEditor\Development\DirectiveUtilitiesBlueprintNodes\UnrealEditor-DirectiveUtilitiesBlueprintNodes.dll.rsp"
-$ExpectedEditorTestCount = 54
-$ExpectedPackagedTestCount = 35
+$ExpectedEditorTestCount = 61
+$ExpectedPackagedTestCount = 42
 
 function Wait-TestProcess {
     param(
@@ -156,8 +159,11 @@ foreach ($TestSource in Get-Content (Join-Path $RepositoryRoot "Tests\RuntimeHos
     }
 }
 Copy-Item (Join-Path $RuntimeTestSourceRoot "Public\Tests\DirectiveUtilTestObject.h") $RuntimeTestPublicRoot
+Copy-Item (Join-Path $RuntimeTestSourceRoot "Public\Tests\DirectiveUtilTestDataTableRows.h") $RuntimeTestPublicRoot
 
-& $BuildScript DirectiveUtilitiesRuntimeHostEditor Win64 Development "-Project=$ProjectFile" -WaitMutex -NoHotReload -ForceUnity -DisableAdaptiveUnity
+& $BuildScript DirectiveUtilitiesRuntimeHostEditor Win64 Development `
+    "-Project=$ProjectFile" -WaitMutex -NoHotReload -ForceUnity -DisableAdaptiveUnity -NoUBA `
+    "-MaxParallelActions=$MaxParallelActions"
 if ($LASTEXITCODE -ne 0) {
     throw "Editor target build failed."
 }
@@ -201,6 +207,7 @@ $PackageArguments = @(
     '-package',
     '-archive',
     "-archivedirectory=$ArchiveRoot",
+    "-ubtargs=-NoUBA -MaxParallelActions=$MaxParallelActions",
     '-unattended',
     '-utf8output'
 )

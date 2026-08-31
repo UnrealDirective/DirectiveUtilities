@@ -6,10 +6,21 @@
 #include "HAL/PlatformProcess.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/App.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 #include "UObject/Package.h"
 
 namespace DirectiveUtilFunctionLibraryTest
 {
+	bool CanVerifyClipboardRoundTrip()
+	{
+#if PLATFORM_LINUX
+		return !FParse::Param(FCommandLine::Get(), TEXT("NullRHI"));
+#else
+		return true;
+#endif
+	}
+
 	EDirectiveUtilBuildConfiguration GetExpectedBuildConfiguration(const EBuildConfiguration BuildConfiguration)
 	{
 		switch (BuildConfiguration)
@@ -149,8 +160,19 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDirectiveUtilFunctionLibraryTest, "DirectiveUt
 
 bool FDirectiveUtilFunctionLibraryTest::RunTest(const FString& Parameters)
 {
-	const FString OriginalClipboard = UDirectiveUtilFunctionLibrary::GetStringFromClipboard();
-	ADD_LATENT_AUTOMATION_COMMAND(DirectiveUtilFunctionLibraryTest::FClipboardRoundTripCommand(this, OriginalClipboard));
+	if (DirectiveUtilFunctionLibraryTest::CanVerifyClipboardRoundTrip())
+	{
+		const FString OriginalClipboard = UDirectiveUtilFunctionLibrary::GetStringFromClipboard();
+		ADD_LATENT_AUTOMATION_COMMAND(DirectiveUtilFunctionLibraryTest::FClipboardRoundTripCommand(this, OriginalClipboard));
+	}
+	else
+	{
+		UDirectiveUtilFunctionLibrary::CopyTextToClipboard(FText::FromString(TEXT("Directive Utilities Text Clipboard")));
+		UDirectiveUtilFunctionLibrary::GetTextFromClipboard();
+		UDirectiveUtilFunctionLibrary::CopyStringToClipboard(TEXT("Directive Utilities String Clipboard"));
+		UDirectiveUtilFunctionLibrary::GetStringFromClipboard();
+		UDirectiveUtilFunctionLibrary::ClearClipboard();
+	}
 
 	const FString ProjectVersion = UDirectiveUtilFunctionLibrary::GetProjectVersion();
 	TestNotEqual("GetProjectVersion should return a non-empty string", ProjectVersion, FString(""));

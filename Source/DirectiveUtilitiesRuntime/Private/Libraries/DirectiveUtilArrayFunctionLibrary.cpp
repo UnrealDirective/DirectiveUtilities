@@ -35,6 +35,11 @@ namespace
 			return ArrayHelper.GetRawPtr(Index);
 		}
 
+		void SwapValues(const int32 FirstIndex, const int32 SecondIndex)
+		{
+			ArrayHelper.SwapValues(FirstIndex, SecondIndex);
+		}
+
 		void MoveTo(void* OutArray)
 		{
 			FScriptArrayHelper OutHelper(ArrayProperty, OutArray);
@@ -1146,6 +1151,25 @@ void UDirectiveUtilArrayFunctionLibrary::GenericArray_Sample(
 		for (int32 SampleIndex = 0; SampleIndex < Count; ++SampleIndex)
 		{
 			CopySourceElement(SampleIndex, RandomIndex(SourceCount - 1));
+		}
+		Result.MoveTo(OutArray);
+		return;
+	}
+
+	if (SampleCount == SourceCount)
+	{
+		for (int32 Index = 0; Index < SourceCount; ++Index)
+		{
+			CopySourceElement(Index, Index);
+		}
+		for (int32 SampleIndex = 0; SampleIndex < SourceCount; ++SampleIndex)
+		{
+			const int32 LastPosition = SourceCount - SampleIndex - 1;
+			Result.SwapValues(RandomIndex(LastPosition), LastPosition);
+		}
+		for (int32 Index = 0; Index < SourceCount / 2; ++Index)
+		{
+			Result.SwapValues(Index, SourceCount - Index - 1);
 		}
 		Result.MoveTo(OutArray);
 		return;

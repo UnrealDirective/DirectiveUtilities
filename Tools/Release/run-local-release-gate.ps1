@@ -8,7 +8,10 @@ param(
 
     [string]$LinuxPackageBase = "",
 
-    [switch]$AllowDirty
+    [switch]$AllowDirty,
+
+    [ValidateRange(1, 128)]
+    [int]$WindowsMaxParallelActions = 8
 )
 
 $ErrorActionPreference = "Stop"
@@ -67,12 +70,14 @@ try {
     & Tools\Release\verify-fab-artifacts.ps1 `
         -EngineRoots $EngineRoots `
         -ValidationRoot $FabValidationRoot `
-        -AllowDirty:$AllowDirty
+        -AllowDirty:$AllowDirty `
+        -MaxParallelActions $WindowsMaxParallelActions
 
     for ($Index = 0; $Index -lt $EngineRoots.Count; $Index++) {
         & Tests\RuntimeHost\Scripts\run-windows.ps1 `
             -EngineRoot $EngineRoots[$Index] `
             -ClientConfiguration Development `
+            -MaxParallelActions $WindowsMaxParallelActions `
             -StompMalloc:($Index -eq 2)
     }
 
@@ -86,6 +91,10 @@ try {
             "v26_clang-20.1.8-rockylinux8"
         )
         $PreviousLinuxToolchainRoot = $env:LINUX_MULTIARCH_ROOT
+        $PreviousMaxParallelActions = $env:UnrealBuildTool_BuildConfiguration__MaxParallelActions
+        $PreviousAllowUbaExecutor = $env:UnrealBuildTool_BuildConfiguration__bAllowUBAExecutor
+        $env:UnrealBuildTool_BuildConfiguration__MaxParallelActions = "$WindowsMaxParallelActions"
+        $env:UnrealBuildTool_BuildConfiguration__bAllowUBAExecutor = "false"
         try {
             for ($Index = 0; $Index -lt $EngineRoots.Count; $Index++) {
                 $LinuxToolchainRoot = Join-Path $LinuxToolchainBase $LinuxToolchainVersions[$Index]
@@ -109,6 +118,18 @@ try {
         }
         finally {
             $env:LINUX_MULTIARCH_ROOT = $PreviousLinuxToolchainRoot
+            if ($null -eq $PreviousMaxParallelActions) {
+                Remove-Item Env:\UnrealBuildTool_BuildConfiguration__MaxParallelActions -ErrorAction SilentlyContinue
+            }
+            else {
+                $env:UnrealBuildTool_BuildConfiguration__MaxParallelActions = $PreviousMaxParallelActions
+            }
+            if ($null -eq $PreviousAllowUbaExecutor) {
+                Remove-Item Env:\UnrealBuildTool_BuildConfiguration__bAllowUBAExecutor -ErrorAction SilentlyContinue
+            }
+            else {
+                $env:UnrealBuildTool_BuildConfiguration__bAllowUBAExecutor = $PreviousAllowUbaExecutor
+            }
         }
     }
 
@@ -148,7 +169,10 @@ try {
         Copy-Item $PerformanceCandidateAttempt3 $PerformanceCandidate -Force
     }
 
-    & Tests\RuntimeHost\Scripts\run-windows.ps1 -EngineRoot $EngineRoots[2] -ClientConfiguration Shipping
+    & Tests\RuntimeHost\Scripts\run-windows.ps1 `
+        -EngineRoot $EngineRoots[2] `
+        -ClientConfiguration Shipping `
+        -MaxParallelActions $WindowsMaxParallelActions
     $EvidenceArguments = @(
         "Tools\Release\record_release_evidence.py",
         "--output",

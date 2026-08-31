@@ -4,7 +4,10 @@ param(
 
     [string]$ValidationRoot = "",
 
-    [switch]$AllowDirty
+    [switch]$AllowDirty,
+
+    [ValidateRange(1, 128)]
+    [int]$MaxParallelActions = 8
 )
 
 $ErrorActionPreference = "Stop"
@@ -39,35 +42,56 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $EngineVersions = @("5.6", "5.7", "5.8")
-for ($Index = 0; $Index -lt $EngineRoots.Count; $Index++) {
-    $EngineVersion = $EngineVersions[$Index]
-    $RunUAT = Join-Path $EngineRoots[$Index] "Engine\Build\BatchFiles\RunUAT.bat"
-    $ArchivePath = Join-Path $FabRoot "DirectiveUtilities-$PluginVersion-UE$EngineVersion-Fab.zip"
-    $VersionRoot = Join-Path $ValidationRoot "UE_$EngineVersion"
-    $ExtractRoot = Join-Path $VersionRoot "Extracted"
-    $PackageRoot = Join-Path $VersionRoot "Package"
+$PreviousMaxParallelActions = $env:UnrealBuildTool_BuildConfiguration__MaxParallelActions
+$PreviousAllowUbaExecutor = $env:UnrealBuildTool_BuildConfiguration__bAllowUBAExecutor
+$env:UnrealBuildTool_BuildConfiguration__MaxParallelActions = "$MaxParallelActions"
+$env:UnrealBuildTool_BuildConfiguration__bAllowUBAExecutor = "false"
 
-    if (-not (Test-Path $RunUAT -PathType Leaf)) {
-        throw "RunUAT not found: $RunUAT"
-    }
-    if (-not (Test-Path $ArchivePath -PathType Leaf)) {
-        throw "Fab archive not found: $ArchivePath"
-    }
+try {
+    for ($Index = 0; $Index -lt $EngineRoots.Count; $Index++) {
+        $EngineVersion = $EngineVersions[$Index]
+        $RunUAT = Join-Path $EngineRoots[$Index] "Engine\Build\BatchFiles\RunUAT.bat"
+        $ArchivePath = Join-Path $FabRoot "DirectiveUtilities-$PluginVersion-UE$EngineVersion-Fab.zip"
+        $VersionRoot = Join-Path $ValidationRoot "UE_$EngineVersion"
+        $ExtractRoot = Join-Path $VersionRoot "Extracted"
+        $PackageRoot = Join-Path $VersionRoot "Package"
 
-    Remove-Item $ExtractRoot, $PackageRoot -Recurse -Force -ErrorAction SilentlyContinue
-    Expand-Archive -LiteralPath $ArchivePath -DestinationPath $ExtractRoot
-    $PluginPath = Join-Path $ExtractRoot "DirectiveUtilities\DirectiveUtilities.uplugin"
-    if (-not (Test-Path $PluginPath -PathType Leaf)) {
-        throw "Extracted plugin descriptor not found: $PluginPath"
-    }
+        if (-not (Test-Path $RunUAT -PathType Leaf)) {
+            throw "RunUAT not found: $RunUAT"
+        }
+        if (-not (Test-Path $ArchivePath -PathType Leaf)) {
+            throw "Fab archive not found: $ArchivePath"
+        }
 
-    & $RunUAT BuildPlugin `
-        "-Plugin=$PluginPath" `
-        "-Package=$PackageRoot" `
-        "-TargetPlatforms=Win64" `
-        -Rocket
-    if ($LASTEXITCODE -ne 0) {
-        throw "Extracted Fab plugin build failed for UE $EngineVersion."
+        Remove-Item $ExtractRoot, $PackageRoot -Recurse -Force -ErrorAction SilentlyContinue
+        Expand-Archive -LiteralPath $ArchivePath -DestinationPath $ExtractRoot
+        $PluginPath = Join-Path $ExtractRoot "DirectiveUtilities\DirectiveUtilities.uplugin"
+        if (-not (Test-Path $PluginPath -PathType Leaf)) {
+            throw "Extracted plugin descriptor not found: $PluginPath"
+        }
+
+        & $RunUAT BuildPlugin `
+            "-Plugin=$PluginPath" `
+            "-Package=$PackageRoot" `
+            "-TargetPlatforms=Win64" `
+            -Rocket
+        if ($LASTEXITCODE -ne 0) {
+            throw "Extracted Fab plugin build failed for UE $EngineVersion."
+        }
+    }
+}
+finally {
+    if ($null -eq $PreviousMaxParallelActions) {
+        Remove-Item Env:\UnrealBuildTool_BuildConfiguration__MaxParallelActions -ErrorAction SilentlyContinue
+    }
+    else {
+        $env:UnrealBuildTool_BuildConfiguration__MaxParallelActions = $PreviousMaxParallelActions
+    }
+    if ($null -eq $PreviousAllowUbaExecutor) {
+        Remove-Item Env:\UnrealBuildTool_BuildConfiguration__bAllowUBAExecutor -ErrorAction SilentlyContinue
+    }
+    else {
+        $env:UnrealBuildTool_BuildConfiguration__bAllowUBAExecutor = $PreviousAllowUbaExecutor
     }
 }
 

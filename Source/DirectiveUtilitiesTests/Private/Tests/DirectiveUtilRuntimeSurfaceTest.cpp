@@ -1,6 +1,12 @@
 // Copyright (c) 2026 Unreal Directive. Licensed under the MIT License.
 
 #include "Libraries/DirectiveUtilArrayFunctionLibrary.h"
+#include "Libraries/DirectiveUtilBytesFunctionLibrary.h"
+#include "Libraries/DirectiveUtilConfigFunctionLibrary.h"
+#include "Libraries/DirectiveUtilCsvFunctionLibrary.h"
+#include "Libraries/DirectiveUtilDataTableFunctionLibrary.h"
+#include "Libraries/DirectiveUtilDateTimeFunctionLibrary.h"
+#include "Libraries/DirectiveUtilFileSystemFunctionLibrary.h"
 #include "Libraries/DirectiveUtilFunctionLibrary.h"
 #include "Libraries/DirectiveUtilGameplayTagFunctionLibrary.h"
 #include "Libraries/DirectiveUtilInputFunctionLibrary.h"
@@ -13,6 +19,7 @@
 #include "Misc/AutomationTest.h"
 #include "Modules/ModuleManager.h"
 #include "Tasks/DirectiveUtilTask_AsyncLoadAsset.h"
+#include "Tasks/DirectiveUtilTask_FileSystem.h"
 #include "Tasks/DirectiveUtilTask_AsyncTrace.h"
 #include "Tasks/DirectiveUtilTask_Delay.h"
 #include "Tasks/DirectiveUtilTask_Flow.h"
@@ -35,6 +42,12 @@ bool FDirectiveUtilRuntimeSurfaceTest::RunTest(const FString& Parameters)
 
 	const FClassExpectation Expectations[] = {
 		{ UDirectiveUtilArrayFunctionLibrary::StaticClass() },
+		{ UDirectiveUtilBytesFunctionLibrary::StaticClass() },
+		{ UDirectiveUtilConfigFunctionLibrary::StaticClass() },
+		{ UDirectiveUtilCsvFunctionLibrary::StaticClass() },
+		{ UDirectiveUtilDataTableFunctionLibrary::StaticClass() },
+		{ UDirectiveUtilDateTimeFunctionLibrary::StaticClass() },
+		{ UDirectiveUtilFileSystemFunctionLibrary::StaticClass() },
 		{ UDirectiveUtilFunctionLibrary::StaticClass() },
 		{ UDirectiveUtilGameplayTagFunctionLibrary::StaticClass() },
 		{ UDirectiveUtilInputFunctionLibrary::StaticClass() },
@@ -47,6 +60,11 @@ bool FDirectiveUtilRuntimeSurfaceTest::RunTest(const FString& Parameters)
 		{ UDirectiveUtilTask_AsyncLoadAsset::StaticClass() },
 		{ UDirectiveUtilTask_AsyncLoadClass::StaticClass() },
 		{ UDirectiveUtilTask_AsyncLoadAssets::StaticClass() },
+		{ UDirectiveUtilTask_ReadTextFile::StaticClass() },
+		{ UDirectiveUtilTask_ReadBinaryFile::StaticClass() },
+		{ UDirectiveUtilTask_WriteTextFile::StaticClass() },
+		{ UDirectiveUtilTask_WriteBinaryFile::StaticClass() },
+		{ UDirectiveUtilTask_WatchFile::StaticClass() },
 		{ UDirectiveUtilTask_AsyncTrace::StaticClass() },
 		{ UDirectiveUtilTask_Delay::StaticClass() },
 		{ UDirectiveUtilTask_UpdateForDuration::StaticClass() },

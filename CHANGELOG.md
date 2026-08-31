@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Added cancellable async text and binary file reads and writes, with atomic writes enabled by default.
+- Added runtime file watching for created, modified, and deleted changes in packaged desktop games.
+- Added the File System function library for text and binary reads, writes, appends, atomic replacement, file sizes, and last-modified timestamps. Paths accept absolute forms or forms relative to the project `Saved` directory. Existing engine nodes remain the source for path parsing, existence checks, copy, move, delete, directory operations, and enumeration.
+- Added the CSV function library with RFC-style quoted-field parsing and writing, header-based access, keyed upsert and removal, header and shape validation, and keyed diffs. Blank lines are skipped, explicit empty rows round-trip as one empty cell, and a failed parse yields an empty document rather than a partial one.
+- Added `EDirectiveUtilCsvDelimiter`, `FDirectiveUtilCsvRow`, and `FDirectiveUtilCsvDocument` for the CSV library.
+- Added runtime DataTable support for strict CSV import and export, rollback-safe in-place replacement, and reflected row diffs. Native `FTableRowBase` types and Blueprint Structure assets support Boolean, finite numeric, enumeration, string, name, text, and value-only struct properties. Imports run Unreal's row-import and table-change lifecycle.
+- Added the Config function library for .ini files: reads with defaults and writes for string, int32, int64, float, bool, string array, Vector2D, Vector, Rotator, and Color values, plus key and section queries and removal. Writes atomically replace files, create missing directories, and refuse malformed existing content.
+- Added the Date Time function library: custom pattern formatting and parsing (`yyyy`, `MM`, `dd`, `HH`, `mm`, `ss`, `fff` tokens with quoted literals), UTC-to-local and local-to-UTC conversion using per-instant timezone rules, and clock-style time span formatting. Conversions return the input unchanged when the platform's time routines reject a value.
+- Added the Bytes function library: standard zlib and gzip streams, bounded compression and decompression of byte arrays, SHA-256 hashing of bytes and UTF-8 strings via a self-contained FIPS 180-4 implementation, and HMAC-SHA256 signing. Uncompressed input and output are limited to 1,000,000 bytes.
+- Added `EDirectiveUtilCompressionFormat` (Zlib, Gzip) for the Bytes library.
+
 ## [2.2.0] - 2026-08-11
 
 ### Added
