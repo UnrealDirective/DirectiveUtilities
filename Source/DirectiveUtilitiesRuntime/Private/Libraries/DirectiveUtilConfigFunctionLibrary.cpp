@@ -19,6 +19,11 @@ namespace
 		return Value.Len() != FCString::Strlen(*Value);
 	}
 
+	bool ContainsBraceOrQuote(const FString& Name)
+	{
+		return Name.Contains(TEXT("{")) || Name.Contains(TEXT("}")) || Name.Contains(TEXT("\""));
+	}
+
 	bool IsValidSectionName(const FString& SectionName)
 	{
 		return !SectionName.IsEmpty()
@@ -27,9 +32,17 @@ namespace
 			&& SectionName == SectionName.TrimStartAndEnd()
 			&& !SectionName.Contains(TEXT("["))
 			&& !SectionName.Contains(TEXT("]"))
+			&& !ContainsBraceOrQuote(SectionName)
 			&& !SectionName.Contains(TEXT("//"))
 			&& !SectionName.Contains(TEXT("\r"))
 			&& !SectionName.Contains(TEXT("\n"));
+	}
+
+	// Engine config layers read these leading characters as array and removal commands rather than as part of the key.
+	bool IsConfigCommandPrefix(const TCHAR Character)
+	{
+		return Character == TEXT('+') || Character == TEXT('-') || Character == TEXT('.') || Character == TEXT('!')
+			|| Character == TEXT('@') || Character == TEXT('*') || Character == TEXT('^');
 	}
 
 	bool IsValidKeyName(const FString& KeyName)
@@ -40,10 +53,58 @@ namespace
 			&& KeyName == KeyName.TrimStartAndEnd()
 			&& KeyName[0] != TEXT(';')
 			&& KeyName[0] != TEXT('~')
+			&& KeyName[0] != TEXT('[')
+			&& !IsConfigCommandPrefix(KeyName[0])
+			&& !ContainsBraceOrQuote(KeyName)
 			&& !KeyName.Contains(TEXT("="))
 			&& !KeyName.Contains(TEXT("//"))
 			&& !KeyName.Contains(TEXT("\r"))
 			&& !KeyName.Contains(TEXT("\n"));
+	}
+
+	// Mirrors FParse::LineExtended, which joins a line ending in a backslash or holding an unclosed unquoted brace
+	// with the next line, and drops unquoted braces from the text it returns.
+	bool IsChangedByLineParser(const FString& Line)
+	{
+		if (Line.EndsWith(TEXT("\\")))
+		{
+			return true;
+		}
+		const bool bIsCommentLine = Line.StartsWith(TEXT(";"));
+		bool bIsQuoted = false;
+		bool bIsComment = false;
+		int32 BracketDepth = 0;
+		for (int32 Index = 0; Index < Line.Len(); ++Index)
+		{
+			const TCHAR Character = Line[Index];
+			const TCHAR NextCharacter = Index + 1 < Line.Len() ? Line[Index + 1] : TEXT('\0');
+			if (!bIsQuoted && Character == TEXT('/') && NextCharacter == TEXT('/'))
+			{
+				bIsComment = true;
+			}
+			if (!bIsQuoted && !bIsComment && !bIsCommentLine && (Character == TEXT('{') || Character == TEXT('}')))
+			{
+				return true;
+			}
+			if (!bIsQuoted && Character == TEXT('{'))
+			{
+				++BracketDepth;
+			}
+			else if (!bIsQuoted && Character == TEXT('}') && BracketDepth > 0)
+			{
+				--BracketDepth;
+			}
+			else if (bIsQuoted && !bIsComment && Character == TEXT('\\')
+				&& (NextCharacter == TEXT('"') || NextCharacter == TEXT('\\')))
+			{
+				++Index;
+			}
+			else if (Character == TEXT('"'))
+			{
+				bIsQuoted = !bIsQuoted;
+			}
+		}
+		return BracketDepth > 0;
 	}
 
 	bool IsValidConfigText(const FString& Contents)
@@ -57,14 +118,21 @@ namespace
 		bool bHasSection = false;
 		for (const FString& Line : Lines)
 		{
+			if (IsChangedByLineParser(Line))
+			{
+				return false;
+			}
 			const FString Trimmed = Line.TrimStartAndEnd();
-			if (Trimmed.IsEmpty() || Trimmed.StartsWith(TEXT(";")) || Trimmed.StartsWith(TEXT("//")))
+			// The engine treats ';' as a comment only in the first column; an indented ';' line with '=' is a key.
+			const bool bIsComment = Line.StartsWith(TEXT(";")) || Trimmed.StartsWith(TEXT("//"))
+				|| (Trimmed.StartsWith(TEXT(";")) && !Trimmed.Contains(TEXT("=")));
+			if (Trimmed.IsEmpty() || bIsComment)
 			{
 				continue;
 			}
 			if (Trimmed.StartsWith(TEXT("[")) && Trimmed.EndsWith(TEXT("]")))
 			{
-				bHasSection = IsValidSectionName(Trimmed.Mid(1, Trimmed.Len() - 2));
+				bHasSection = Line.StartsWith(TEXT("[")) && IsValidSectionName(Trimmed.Mid(1, Trimmed.Len() - 2));
 				if (!bHasSection)
 				{
 					return false;
@@ -164,12 +232,107 @@ namespace
 		return IFileManager::Get().MakeDirectory(*Directory, /*Tree*/ true);
 	}
 
-	bool SaveConfigFile(FConfigFile& File, const FString& ResolvedPath)
+	bool ShouldQuoteConfigValue(const FString& Value)
+	{
+		if (Value.IsEmpty())
+		{
+			return false;
+		}
+		if (FChar::IsWhitespace(Value[0]) || FChar::IsWhitespace(Value[Value.Len() - 1]) || Value.EndsWith(TEXT("\\")))
+		{
+			return true;
+		}
+		for (const TCHAR Character : Value)
+		{
+			if (Character == TEXT('"') || Character == TEXT('{') || Character == TEXT('}')
+				|| Character == TEXT('\r') || Character == TEXT('\n'))
+			{
+				return true;
+			}
+		}
+		return Value.Contains(TEXT("//"));
+	}
+
+	void AppendConfigLine(FString& Contents, const FString& KeyName, const FString& Value)
+	{
+		Contents += KeyName;
+		Contents += TEXT('=');
+		if (ShouldQuoteConfigValue(Value))
+		{
+			Contents += TEXT('"');
+			Contents += Value.ReplaceCharWithEscapedChar();
+			Contents += TEXT('"');
+		}
+		else
+		{
+			Contents += Value;
+		}
+		Contents += LINE_TERMINATOR;
+	}
+
+	// FConfigFile::WriteToString drops empty sections and leaves edge tabs unquoted, so the file text is built here.
+	FString SerializeConfigFile(const FConfigFile& File)
 	{
 		FString Contents;
-		File.WriteToString(Contents, ResolvedPath);
+		for (const TPair<FString, FConfigSection>& SectionPair : File)
+		{
+			Contents += TEXT('[');
+			Contents += SectionPair.Key;
+			Contents += TEXT(']');
+			Contents += LINE_TERMINATOR;
+
+			TSet<FName> WrittenKeys;
+			for (const TPair<FName, FConfigValue>& Entry : SectionPair.Value)
+			{
+				bool bAlreadyWritten = false;
+				WrittenKeys.Add(Entry.Key, &bAlreadyWritten);
+				if (bAlreadyWritten)
+				{
+					continue;
+				}
+				const FString KeyName = Entry.Key.ToString();
+				TArray<const FConfigValue*> Values;
+				SectionPair.Value.MultiFindPointer(Entry.Key, Values, true);
+				for (const FConfigValue* Value : Values)
+				{
+					AppendConfigLine(Contents, KeyName, Value->GetSavedValueForWriting());
+				}
+			}
+			Contents += LINE_TERMINATOR;
+		}
+		return Contents;
+	}
+
+	bool SaveConfigFile(const FConfigFile& File, const FString& ResolvedPath)
+	{
 		return UDirectiveUtilFileSystemFunctionLibrary::WriteTextFileAtomic(
-			ResolvedPath, Contents, true, true);
+			ResolvedPath, SerializeConfigFile(File), true, true);
+	}
+
+	const FConfigSection* FindStoredSection(const FString& FilePath, const FString& SectionName, const FString& KeyName, FConfigFile& OutFile)
+	{
+		FString ResolvedPath;
+		FString StoredSectionName;
+		if (!ValidateConfigArguments(FilePath, SectionName, KeyName, ResolvedPath)
+			|| !LoadConfigSection(ResolvedPath, SectionName, OutFile, StoredSectionName))
+		{
+			return nullptr;
+		}
+		return OutFile.FindSection(StoredSectionName);
+	}
+
+	// FConfigValue::GetValue expands %TOKEN% macros into a fixed seven-entry buffer that four macros overflow, so reads use the saved text.
+	bool ReadStoredValue(const FString& FilePath, const FString& SectionName, const FString& KeyName, FString& OutValue)
+	{
+		FConfigFile File;
+		const FConfigSection* Section = FindStoredSection(FilePath, SectionName, KeyName, File);
+		const FConfigValue* Value = Section != nullptr ? Section->Find(FName(*KeyName)) : nullptr;
+		if (Value == nullptr)
+		{
+			return false;
+		}
+		OutValue = Value->GetSavedValue();
+		return true;
 	}
 
 	void SetScalarConfigValue(FConfigFile& File, const FString& SectionName, const FString& KeyName, const FString& Value)
@@ -205,118 +368,51 @@ namespace
 
 FString UDirectiveUtilConfigFunctionLibrary::ReadConfigString(const FString& FilePath, const FString& SectionName, const FString& KeyName, const FString& DefaultValue)
 {
-	FString ResolvedPath;
-	if (!ValidateConfigArguments(FilePath, SectionName, KeyName, ResolvedPath))
-	{
-		return DefaultValue;
-	}
-
-	FConfigFile File;
-	FString StoredSectionName;
-	FString Value = DefaultValue;
-	if (!LoadConfigSection(ResolvedPath, SectionName, File, StoredSectionName)
-		|| !File.GetString(*StoredSectionName, *KeyName, Value))
-	{
-		Value = DefaultValue;
-	}
-	return Value;
+	FString Value;
+	return ReadStoredValue(FilePath, SectionName, KeyName, Value) ? Value : DefaultValue;
 }
 
 int32 UDirectiveUtilConfigFunctionLibrary::ReadConfigInt(const FString& FilePath, const FString& SectionName, const FString& KeyName, const int32 DefaultValue)
 {
-	FString ResolvedPath;
-	if (!ValidateConfigArguments(FilePath, SectionName, KeyName, ResolvedPath))
-	{
-		return DefaultValue;
-	}
-
-	FConfigFile File;
-	FString StoredSectionName;
-	int32 Value = DefaultValue;
-	if (!LoadConfigSection(ResolvedPath, SectionName, File, StoredSectionName)
-		|| !File.GetInt(*StoredSectionName, *KeyName, Value))
-	{
-		Value = DefaultValue;
-	}
-	return Value;
+	FString Value;
+	return ReadStoredValue(FilePath, SectionName, KeyName, Value) ? FCString::Atoi(*Value) : DefaultValue;
 }
 
 int64 UDirectiveUtilConfigFunctionLibrary::ReadConfigInt64(const FString& FilePath, const FString& SectionName, const FString& KeyName, const int64 DefaultValue)
 {
-	FString ResolvedPath;
-	if (!ValidateConfigArguments(FilePath, SectionName, KeyName, ResolvedPath))
-	{
-		return DefaultValue;
-	}
-
-	FConfigFile File;
-	FString StoredSectionName;
-	int64 Value = DefaultValue;
-	if (!LoadConfigSection(ResolvedPath, SectionName, File, StoredSectionName)
-		|| !File.GetInt64(*StoredSectionName, *KeyName, Value))
-	{
-		Value = DefaultValue;
-	}
-	return Value;
+	FString Value;
+	return ReadStoredValue(FilePath, SectionName, KeyName, Value) ? FCString::Atoi64(*Value) : DefaultValue;
 }
 
 float UDirectiveUtilConfigFunctionLibrary::ReadConfigFloat(const FString& FilePath, const FString& SectionName, const FString& KeyName, const float DefaultValue)
 {
-	FString ResolvedPath;
-	if (!ValidateConfigArguments(FilePath, SectionName, KeyName, ResolvedPath))
-	{
-		return DefaultValue;
-	}
-
-	FConfigFile File;
-	FString StoredSectionName;
-	float Value = DefaultValue;
-	if (!LoadConfigSection(ResolvedPath, SectionName, File, StoredSectionName)
-		|| !File.GetFloat(*StoredSectionName, *KeyName, Value))
-	{
-		Value = DefaultValue;
-	}
-	return Value;
+	FString Value;
+	return ReadStoredValue(FilePath, SectionName, KeyName, Value) ? FCString::Atof(*Value) : DefaultValue;
 }
 
 bool UDirectiveUtilConfigFunctionLibrary::ReadConfigBool(const FString& FilePath, const FString& SectionName, const FString& KeyName, const bool DefaultValue)
 {
-	FString ResolvedPath;
-	if (!ValidateConfigArguments(FilePath, SectionName, KeyName, ResolvedPath))
-	{
-		return DefaultValue;
-	}
-
-	FConfigFile File;
-	FString StoredSectionName;
-	bool Value = DefaultValue;
-	if (!LoadConfigSection(ResolvedPath, SectionName, File, StoredSectionName)
-		|| !File.GetBool(*StoredSectionName, *KeyName, Value))
-	{
-		Value = DefaultValue;
-	}
-	return Value;
+	FString Value;
+	return ReadStoredValue(FilePath, SectionName, KeyName, Value) ? FCString::ToBool(*Value) : DefaultValue;
 }
 
 bool UDirectiveUtilConfigFunctionLibrary::ReadConfigStringArray(const FString& FilePath, const FString& SectionName, const FString& KeyName, TArray<FString>& OutValues)
 {
 	OutValues.Reset();
-	FString ResolvedPath;
-	if (!ValidateConfigArguments(FilePath, SectionName, KeyName, ResolvedPath))
+	FConfigFile File;
+	const FConfigSection* Section = FindStoredSection(FilePath, SectionName, KeyName, File);
+	if (Section == nullptr)
 	{
 		return false;
 	}
 
-	FConfigFile File;
-	FString StoredSectionName;
-	TArray<FString> Values;
-	if (!LoadConfigSection(ResolvedPath, SectionName, File, StoredSectionName)
-		|| File.GetArray(*StoredSectionName, *KeyName, Values) <= 0)
+	TArray<const FConfigValue*> StoredValues;
+	Section->MultiFindPointer(FName(*KeyName), StoredValues, true);
+	for (const FConfigValue* StoredValue : StoredValues)
 	{
-		return false;
+		OutValues.Add(StoredValue->GetSavedValue());
 	}
-	OutValues = MoveTemp(Values);
-	return true;
+	return !OutValues.IsEmpty();
 }
 
 bool UDirectiveUtilConfigFunctionLibrary::WriteConfigString(const FString& FilePath, const FString& SectionName, const FString& KeyName, const FString& Value)

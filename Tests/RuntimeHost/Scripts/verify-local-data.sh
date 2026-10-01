@@ -8,7 +8,7 @@ REPOSITORY_ROOT="$(cd "$SCRIPT_ROOT/../../.." && pwd)"
 require_symbol() {
 	local symbol="$1"
 	local file="$2"
-	if ! rg -q "static .*${symbol}\\(" "$REPOSITORY_ROOT/$file"; then
+	if ! grep -Eq "static .*${symbol}\\(" "$REPOSITORY_ROOT/$file"; then
 		echo "Missing local-data API: $symbol" >&2
 		exit 1
 	fi
@@ -22,7 +22,7 @@ for symbol in ReadTextFileAsync ReadBinaryFileAsync WriteTextFileAsync WriteBina
 	require_symbol "$symbol" "Source/DirectiveUtilitiesRuntime/Public/Tasks/DirectiveUtilTask_FileSystem.h"
 done
 
-if rg -q '"DirectoryWatcher"' "$REPOSITORY_ROOT/Source/DirectiveUtilitiesRuntime/DirectiveUtilitiesRuntime.Build.cs"; then
+if grep -Eq '"DirectoryWatcher"' "$REPOSITORY_ROOT/Source/DirectiveUtilitiesRuntime/DirectiveUtilitiesRuntime.Build.cs"; then
 	echo "Runtime file watching must not depend on Unreal's developer-only DirectoryWatcher module" >&2
 	exit 1
 fi
@@ -39,7 +39,7 @@ for symbol in HasConfigKey ReadConfigVector WriteConfigVector ReadConfigColor Wr
 	require_symbol "$symbol" "Source/DirectiveUtilitiesRuntime/Public/Libraries/DirectiveUtilConfigFunctionLibrary.h"
 done
 
-if rg -q "static bool (FileExists|DirectoryExists|CreateDirectory|DeleteFile|DeleteDirectory|CopyFile|MoveFile|FindFiles|FindDirectories)\\(" \
+if grep -Eq "static bool (FileExists|DirectoryExists|CreateDirectory|DeleteFile|DeleteDirectory|CopyFile|MoveFile|FindFiles|FindDirectories)\\(" \
 	"$REPOSITORY_ROOT/Source/DirectiveUtilitiesRuntime/Public/Libraries/DirectiveUtilFileSystemFunctionLibrary.h"; then
 	echo "File System library duplicates UE 5.8 Blueprint file-management nodes" >&2
 	exit 1

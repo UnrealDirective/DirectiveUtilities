@@ -22,13 +22,16 @@ class DIRECTIVEUTILITIESRUNTIME_API UDirectiveUtilCsvFunctionLibrary : public UB
 	GENERATED_BODY()
 
 public:
+	static constexpr int32 MaximumRowCount = 1000000;
 
 	/**
 	 * Parses CSV text into a document. Newlines inside quoted fields are supported; CR, LF,
 	 * and CRLF are accepted as row terminators. A quote is only special at the start of a
 	 * field; inside an unquoted field it is kept as literal content. A quoted field must end
 	 * at a separator or a row terminator, so trailing content after the closing quote fails.
-	 * Blank lines are skipped rather than parsed as a row holding one empty cell.
+	 * Blank lines are skipped rather than parsed as a row holding one empty cell. A leading
+	 * byte-order mark (U+FEFF) is ignored. Text with more than MaximumRowCount rows, counting
+	 * the header row, fails.
 	 *
 	 * @param CsvText The text to parse.
 	 * @param Delimiter The field separator.
@@ -42,7 +45,8 @@ public:
 	/**
 	 * Serializes a document to CSV text using its stored delimiter. Cells within a row are
 	 * separated by the delimiter, with no trailing delimiter; rows are terminated with LF.
-	 * A row with no cells is written as one quoted empty cell.
+	 * A row with no cells is written as one quoted empty cell. A cell is quoted when it holds the
+	 * delimiter, a double quote, or a line break, or starts with U+FEFF.
 	 *
 	 * @param Document The document to serialize.
 	 * @param OutCsvText Receives the serialized text.
@@ -171,10 +175,10 @@ public:
 	 * @param KeyHeader The unique header naming the key column.
 	 * @param KeyValue The non-empty key to find.
 	 * @param OutRowIndex Receives the zero-based row index, or -1 on failure.
-	 * @param bCaseSensitive Whether header and key matching distinguish letter case.
+	 * @param bCaseSensitive Whether header and key matching distinguish letter case. When `true`, keys such as `Apple` and `apple` are different rows.
 	 * @return `true` when exactly one data row has the key.
 	 */
-	UFUNCTION(BlueprintPure, Category = "Directive Utilities|Csv")
+	UFUNCTION(BlueprintCallable, Category = "Directive Utilities|Csv")
 	static bool FindCsvRowByKey(const FDirectiveUtilCsvDocument& Document, const FString& KeyHeader,
 		const FString& KeyValue, int32& OutRowIndex, const bool bCaseSensitive = false);
 
@@ -186,10 +190,10 @@ public:
 	 * @param Document The document to edit. The first row is treated as headers.
 	 * @param KeyHeader The unique header naming the key column.
 	 * @param KeyValue The non-empty key to update or add.
-	 * @param ValuesByHeader Values for uniquely resolved columns.
+	 * @param ValuesByHeader Values for uniquely resolved columns. Map keys ignore letter case, so one call cannot set headers that differ only in case.
 	 * @param OutRowIndex Receives the updated or appended row index, or -1 on failure.
 	 * @param OutErrorMessage Receives the validation error, or an empty string on success.
-	 * @param bCaseSensitive Whether header and key matching distinguish letter case.
+	 * @param bCaseSensitive Whether header and key matching distinguish letter case. When `false`, keys that differ only in case count as repeated keys and fail validation.
 	 * @return `true` when the row was updated or added.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Directive Utilities|Csv")
@@ -220,7 +224,7 @@ public:
 	 * @param bCaseSensitive Whether header matching distinguishes letter case.
 	 * @return `true` when no required header is missing and no header is repeated. The two output arrays must be different variables.
 	 */
-	UFUNCTION(BlueprintPure, Category = "Directive Utilities|Csv")
+	UFUNCTION(BlueprintCallable, Category = "Directive Utilities|Csv")
 	static bool ValidateCsvHeaders(const FDirectiveUtilCsvDocument& Document,
 		const TArray<FString>& RequiredHeaders, TArray<FString>& OutMissingHeaders,
 		TArray<FString>& OutDuplicateHeaders, const bool bCaseSensitive = false);
@@ -232,17 +236,18 @@ public:
 	 * @param OutInvalidRowIndices Receives zero-based indices of ragged data rows.
 	 * @return `true` for an empty document or a rectangular document.
 	 */
-	UFUNCTION(BlueprintPure, Category = "Directive Utilities|Csv")
+	UFUNCTION(BlueprintCallable, Category = "Directive Utilities|Csv")
 	static bool ValidateCsvShape(const FDirectiveUtilCsvDocument& Document, TArray<int32>& OutInvalidRowIndices);
 
 	/**
 	 * Compares two documents by a unique key column. Header order must match. Key changes are
 	 * reported as a removal and an addition; non-key cell changes are reported as changed keys.
+	 * Cell values always compare with letter case, so `red` to `Red` is a change.
 	 *
 	 * @param Before The earlier document.
 	 * @param After The later document.
 	 * @param KeyHeader The unique header naming the key column in both documents.
-	 * @param OutDiff Receives sorted added, removed, and changed keys, or empty arrays on failure.
+	 * @param OutDiff Receives added, removed, and changed keys, or empty arrays on failure. Each array is sorted ignoring case, with keys that differ only in case ordered by character code.
 	 * @param OutErrorMessage Receives the validation error, or an empty string on success.
 	 * @param bCaseSensitive Whether header and key matching distinguish letter case.
 	 * @return `true` when both documents were valid and comparable.

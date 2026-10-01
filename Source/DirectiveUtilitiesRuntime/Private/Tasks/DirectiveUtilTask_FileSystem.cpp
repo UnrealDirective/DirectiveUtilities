@@ -8,9 +8,14 @@
 #include "Engine/World.h"
 #include "HAL/FileManager.h"
 #include "Libraries/DirectiveUtilFileSystemFunctionLibrary.h"
+#include "Misc/Crc.h"
+#include "Misc/FileHelper.h"
 
 namespace
 {
+	constexpr int64 MaximumHashedWatchFileSize = 1024 * 1024;
+	constexpr double RecentModificationSeconds = 2.0;
+
 	bool IsAsyncFilePathUsable(const FString& Path)
 	{
 		return !Path.IsEmpty() && Path.Len() == FCString::Strlen(*Path);
@@ -32,6 +37,22 @@ namespace
 		}
 		return Action;
 	}
+
+	bool IsRecentlyModified(const FDateTime& ModificationTime)
+	{
+		return FMath::Abs((FDateTime::UtcNow() - ModificationTime).GetTotalSeconds()) <= RecentModificationSeconds;
+	}
+
+	bool TryHashFile(const FString& ResolvedPath, const int64 FileSize, uint32& OutHash)
+	{
+		TArray<uint8> Bytes;
+		if (FileSize > MaximumHashedWatchFileSize || !FFileHelper::LoadFileToArray(Bytes, *ResolvedPath, FILEREAD_Silent))
+		{
+			return false;
+		}
+		OutHash = FCrc::MemCrc32(Bytes.GetData(), Bytes.Num());
+		return true;
+	}
 }
 
 UDirectiveUtilTask_ReadTextFile* UDirectiveUtilTask_ReadTextFile::ReadTextFileAsync(UObject* WorldContextObject, const FString& Path)
@@ -44,6 +65,12 @@ UDirectiveUtilTask_ReadTextFile* UDirectiveUtilTask_ReadTextFile::ReadTextFileAs
 
 void UDirectiveUtilTask_ReadTextFile::Activate()
 {
+	if (bActivated || bFinished)
+	{
+		return;
+	}
+	bActivated = true;
+	RootWithoutGameInstance();
 	if (!HasUsableWorld(WorldContextObject) || !IsAsyncFilePathUsable(Path))
 	{
 		Finish(false, FString(), TEXT("A valid world and file path are required."));
@@ -105,6 +132,12 @@ UDirectiveUtilTask_ReadBinaryFile* UDirectiveUtilTask_ReadBinaryFile::ReadBinary
 
 void UDirectiveUtilTask_ReadBinaryFile::Activate()
 {
+	if (bActivated || bFinished)
+	{
+		return;
+	}
+	bActivated = true;
+	RootWithoutGameInstance();
 	if (!HasUsableWorld(WorldContextObject) || !IsAsyncFilePathUsable(Path))
 	{
 		Finish(false, TArray<uint8>(), TEXT("A valid world and file path are required."));
@@ -176,6 +209,12 @@ UDirectiveUtilTask_WriteTextFile* UDirectiveUtilTask_WriteTextFile::WriteTextFil
 
 void UDirectiveUtilTask_WriteTextFile::Activate()
 {
+	if (bActivated || bFinished)
+	{
+		return;
+	}
+	bActivated = true;
+	RootWithoutGameInstance();
 	if (!HasUsableWorld(WorldContextObject) || !IsAsyncFilePathUsable(Path))
 	{
 		Finish(false, TEXT("A valid world and file path are required."));
@@ -252,6 +291,12 @@ UDirectiveUtilTask_WriteBinaryFile* UDirectiveUtilTask_WriteBinaryFile::WriteBin
 
 void UDirectiveUtilTask_WriteBinaryFile::Activate()
 {
+	if (bActivated || bFinished)
+	{
+		return;
+	}
+	bActivated = true;
+	RootWithoutGameInstance();
 	if (!HasUsableWorld(WorldContextObject) || !IsAsyncFilePathUsable(Path))
 	{
 		Finish(false, TEXT("A valid world and file path are required."));
@@ -319,31 +364,32 @@ UDirectiveUtilTask_WatchFile* UDirectiveUtilTask_WatchFile::WatchFile(UObject* W
 
 void UDirectiveUtilTask_WatchFile::Activate()
 {
-	UWorld* World = WorldContextObject && GEngine
-		? GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::ReturnNull)
-		: nullptr;
-	FTimerManager* TimerManager = GetTimerManager();
-	if (!World || !TimerManager || !IsAsyncFilePathUsable(Path) || !FMath::IsFinite(PollInterval) || PollInterval <= 0.0f)
+	if (bActivated || bFinished)
+	{
+		return;
+	}
+	bActivated = true;
+	RootWithoutGameInstance();
+	if (!HasUsableWorld(WorldContextObject) || !IsAsyncFilePathUsable(Path) || !FMath::IsFinite(PollInterval) || PollInterval <= 0.0f)
 	{
 		Fail(TEXT("A valid world, file path, and positive finite poll interval are required."));
 		return;
 	}
 
 	ResolvedPath = DirectiveUtil::ResolveRuntimePath(Path);
-	bPreviouslyExists = IFileManager::Get().FileExists(*ResolvedPath);
 	const FFileStatData InitialState = IFileManager::Get().GetStatData(*ResolvedPath);
-	PreviousSize = bPreviouslyExists ? InitialState.FileSize : -1;
-	PreviousModificationTime = bPreviouslyExists ? InitialState.ModificationTime : FDateTime();
-	TimerManager->SetTimer(TimerHandle, this, &UDirectiveUtilTask_WatchFile::Poll, PollInterval, true);
+	const bool bExists = InitialState.bIsValid && !InitialState.bIsDirectory;
+	uint32 ContentHash = 0;
+	const bool bHasContentHash = bExists && IsRecentlyModified(InitialState.ModificationTime)
+		&& TryHashFile(ResolvedPath, InitialState.FileSize, ContentHash);
+	RecordState(InitialState, bExists, bHasContentHash, ContentHash);
+	TickerHandle = FTSTicker::GetCoreTicker().AddTicker(
+		FTickerDelegate::CreateUObject(this, &UDirectiveUtilTask_WatchFile::Poll), PollInterval);
 }
 
 void UDirectiveUtilTask_WatchFile::Cancel()
 {
 	bFinished = true;
-	if (FTimerManager* TimerManager = GetTimerManager())
-	{
-		TimerManager->ClearTimer(TimerHandle);
-	}
 	Changed.Clear();
 	Failed.Clear();
 	Super::Cancel();
@@ -359,33 +405,102 @@ bool UDirectiveUtilTask_WatchFile::ShouldBroadcastDelegates() const
 	return !bFinished && Super::ShouldBroadcastDelegates();
 }
 
-void UDirectiveUtilTask_WatchFile::Poll()
+void UDirectiveUtilTask_WatchFile::SetReadyToDestroy()
 {
+	FTSTicker::RemoveTicker(TickerHandle);
+	TickerHandle.Reset();
+	Super::SetReadyToDestroy();
+}
+
+bool UDirectiveUtilTask_WatchFile::Poll(float)
+{
+	if (!ShouldBroadcastDelegates())
+	{
+		return false;
+	}
+	if (bPollInFlight)
+	{
+		return true;
+	}
+
+	bPollInFlight = true;
+	const FString PolledPath = ResolvedPath;
+	const bool bKnownToExist = bPreviouslyExists;
+	const int64 KnownSize = PreviousSize;
+	const FDateTime KnownModificationTime = PreviousModificationTime;
+	const bool bHasKnownContentHash = bHasPreviousContentHash;
+	TWeakObjectPtr<UDirectiveUtilTask_WatchFile> WeakAction(this);
+	Async(EAsyncExecution::ThreadPool,
+		[WeakAction, PolledPath, bKnownToExist, KnownSize, KnownModificationTime, bHasKnownContentHash]()
+	{
+		const FFileStatData State = IFileManager::Get().GetStatData(*PolledPath);
+		const bool bExists = State.bIsValid && !State.bIsDirectory;
+		const bool bMetadataUnchanged = bExists && bKnownToExist
+			&& State.FileSize == KnownSize && State.ModificationTime == KnownModificationTime;
+
+		// Mac and Linux report whole-second modification times, so a same-size rewrite inside that second
+		// only shows up in the contents.
+		const bool bShouldHash = bExists
+			&& (IsRecentlyModified(State.ModificationTime) || (bMetadataUnchanged && bHasKnownContentHash));
+		uint32 ContentHash = 0;
+		const bool bHasContentHash = bShouldHash && TryHashFile(PolledPath, State.FileSize, ContentHash);
+		AsyncTask(ENamedThreads::GameThread, [WeakAction, State, bExists, bHasContentHash, ContentHash]()
+		{
+			if (UDirectiveUtilTask_WatchFile* Action = WeakAction.Get())
+			{
+				Action->ApplyPoll(State, bExists, bHasContentHash, ContentHash);
+			}
+		});
+	});
+	return true;
+}
+
+void UDirectiveUtilTask_WatchFile::ApplyPoll(
+	const FFileStatData& State,
+	const bool bExists,
+	const bool bHasContentHash,
+	const uint32 ContentHash)
+{
+	bPollInFlight = false;
 	if (!ShouldBroadcastDelegates())
 	{
 		return;
 	}
 
-	IFileManager& FileManager = IFileManager::Get();
-	const bool bExists = FileManager.FileExists(*ResolvedPath);
-	const FFileStatData CurrentState = bExists ? FileManager.GetStatData(*ResolvedPath) : FFileStatData();
+	const bool bMetadataUnchanged = bExists && bPreviouslyExists
+		&& State.FileSize == PreviousSize && State.ModificationTime == PreviousModificationTime;
+	const bool bContentChanged = bMetadataUnchanged && bHasContentHash && bHasPreviousContentHash
+		&& ContentHash != PreviousContentHash;
+	const bool bCreated = !bPreviouslyExists && bExists;
+	const bool bDeleted = bPreviouslyExists && !bExists;
+	const bool bModified = bPreviouslyExists && bExists && (!bMetadataUnchanged || bContentChanged);
+	RecordState(State, bExists, bHasContentHash, ContentHash);
 
-	if (!bPreviouslyExists && bExists)
+	if (bCreated)
 	{
 		Changed.Broadcast(EDirectiveUtilFileChangeType::Created, Path);
 	}
-	else if (bPreviouslyExists && !bExists)
+	else if (bDeleted)
 	{
 		Changed.Broadcast(EDirectiveUtilFileChangeType::Deleted, Path);
 	}
-	else if (bExists && (CurrentState.FileSize != PreviousSize || CurrentState.ModificationTime != PreviousModificationTime))
+	else if (bModified)
 	{
 		Changed.Broadcast(EDirectiveUtilFileChangeType::Modified, Path);
 	}
+}
 
+void UDirectiveUtilTask_WatchFile::RecordState(
+	const FFileStatData& State,
+	const bool bExists,
+	const bool bHasContentHash,
+	const uint32 ContentHash)
+{
 	bPreviouslyExists = bExists;
-	PreviousSize = bExists ? CurrentState.FileSize : -1;
-	PreviousModificationTime = bExists ? CurrentState.ModificationTime : FDateTime();
+	PreviousSize = bExists ? State.FileSize : -1;
+	PreviousModificationTime = bExists ? State.ModificationTime : FDateTime();
+	bHasPreviousContentHash = bHasContentHash && IsRecentlyModified(State.ModificationTime);
+	PreviousContentHash = bHasPreviousContentHash ? ContentHash : 0;
 }
 
 void UDirectiveUtilTask_WatchFile::Fail(FString Error)

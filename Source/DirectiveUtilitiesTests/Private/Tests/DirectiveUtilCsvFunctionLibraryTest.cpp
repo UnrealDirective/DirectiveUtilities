@@ -2,6 +2,7 @@
 
 #include "Libraries/DirectiveUtilCsvFunctionLibrary.h"
 #include "Misc/AutomationTest.h"
+#include "UObject/Class.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FDirectiveUtilCsvFunctionLibraryTest,
@@ -293,9 +294,37 @@ bool FDirectiveUtilCsvFunctionLibraryTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Keyed documents diff"),
 		UDirectiveUtilCsvFunctionLibrary::DiffCsvByKey(
 			BeforeDiff, AfterDiff, TEXT("Id"), Diff, ErrorMessage, false));
-	TestEqual(TEXT("Diff reports added keys with source casing"), Diff.AddedKeys, TArray<FString>({ TEXT("AddMe") }));
-	TestEqual(TEXT("Diff reports removed keys with source casing"), Diff.RemovedKeys, TArray<FString>({ TEXT("RemoveMe") }));
-	TestEqual(TEXT("Diff reports changed keys with current casing"), Diff.ChangedKeys, TArray<FString>({ TEXT("CHANGE") }));
+	auto MatchesExactly = [](const TArray<FString>& Actual, const TArray<FString>& Expected)
+	{
+		if (Actual.Num() != Expected.Num())
+		{
+			return false;
+		}
+		for (int32 Index = 0; Index < Actual.Num(); ++Index)
+		{
+			if (!Actual[Index].Equals(Expected[Index], ESearchCase::CaseSensitive))
+			{
+				return false;
+			}
+		}
+		return true;
+	};
+	TestTrue(TEXT("Diff reports added keys with source casing"), MatchesExactly(Diff.AddedKeys, { TEXT("AddMe") }));
+	TestTrue(TEXT("Diff reports removed keys with source casing"), MatchesExactly(Diff.RemovedKeys, { TEXT("RemoveMe") }));
+	TestTrue(TEXT("Diff reports changed keys with current casing"), MatchesExactly(Diff.ChangedKeys, { TEXT("CHANGE") }));
+
+	FDirectiveUtilCsvDocument BeforeOrdering;
+	FDirectiveUtilCsvDocument AfterOrdering;
+	UDirectiveUtilCsvFunctionLibrary::ParseCsv(
+		TEXT("Id,Value\nZ,0\n"), EDirectiveUtilCsvDelimiter::Comma, BeforeOrdering, ErrorMessage);
+	UDirectiveUtilCsvFunctionLibrary::ParseCsv(
+		TEXT("Id,Value\nZ,0\nb,1\nA,2\na,3\nB,4\n"), EDirectiveUtilCsvDelimiter::Comma, AfterOrdering, ErrorMessage);
+	FDirectiveUtilCsvDiff OrderingDiff;
+	TestTrue(TEXT("A case-sensitive diff with mixed-case keys succeeds"),
+		UDirectiveUtilCsvFunctionLibrary::DiffCsvByKey(
+			BeforeOrdering, AfterOrdering, TEXT("Id"), OrderingDiff, ErrorMessage, true));
+	TestTrue(TEXT("Diff keys sort ignoring case, with case ties ordered by character code"),
+		MatchesExactly(OrderingDiff.AddedKeys, { TEXT("A"), TEXT("a"), TEXT("B"), TEXT("b") }));
 	FString AliasedKeyHeader(TEXT("Id"));
 	TestTrue(TEXT("The diff key header may alias the error output"),
 		UDirectiveUtilCsvFunctionLibrary::DiffCsvByKey(
@@ -322,6 +351,118 @@ bool FDirectiveUtilCsvFunctionLibraryTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("Different schemas reject a diff"),
 		UDirectiveUtilCsvFunctionLibrary::DiffCsvByKey(
 			BeforeDiff, DifferentHeaders, TEXT("Id"), Diff, ErrorMessage, false));
+
+	auto HoldsOnlyKey = [](const TArray<FString>& Keys, const TCHAR* ExpectedKey)
+	{
+		return Keys.Num() == 1 && Keys[0].Equals(ExpectedKey, ESearchCase::CaseSensitive);
+	};
+
+	FDirectiveUtilCsvDocument CaseKeyed;
+	UDirectiveUtilCsvFunctionLibrary::ParseCsv(
+		TEXT("Id,Value\nApple,1\napple,2\n"), EDirectiveUtilCsvDelimiter::Comma, CaseKeyed, ErrorMessage);
+	TestTrue(TEXT("A case-sensitive key lookup finds the lowercase row"),
+		UDirectiveUtilCsvFunctionLibrary::FindCsvRowByKey(CaseKeyed, TEXT("Id"), TEXT("apple"), RowIndex, true));
+	TestEqual(TEXT("The case-sensitive lookup returns the lowercase row"), RowIndex, 2);
+	TestFalse(TEXT("A case-sensitive key lookup rejects a different case"),
+		UDirectiveUtilCsvFunctionLibrary::FindCsvRowByKey(CaseKeyed, TEXT("Id"), TEXT("APPLE"), RowIndex, true));
+	TestFalse(TEXT("A case-insensitive key lookup treats Apple and apple as ambiguous"),
+		UDirectiveUtilCsvFunctionLibrary::FindCsvRowByKey(CaseKeyed, TEXT("Id"), TEXT("apple"), RowIndex, false));
+
+	TMap<FString, FString> CaseUpdate;
+	CaseUpdate.Add(TEXT("Value"), TEXT("20"));
+	TestTrue(TEXT("A case-sensitive upsert accepts keys that differ only in case"),
+		UDirectiveUtilCsvFunctionLibrary::UpsertCsvRowByKey(
+			CaseKeyed, TEXT("Id"), TEXT("apple"), CaseUpdate, RowIndex, ErrorMessage, true));
+	TestEqual(TEXT("The case-sensitive upsert updates the matching row"), RowIndex, 2);
+	TestEqual(TEXT("The case-sensitive upsert writes the matching row"), CaseKeyed.Rows[2].Cells[1], FString(TEXT("20")));
+	TestEqual(TEXT("The case-sensitive upsert leaves the other row"), CaseKeyed.Rows[1].Cells[1], FString(TEXT("1")));
+	TestTrue(TEXT("A case-sensitive upsert appends a key in a new case"),
+		UDirectiveUtilCsvFunctionLibrary::UpsertCsvRowByKey(
+			CaseKeyed, TEXT("Id"), TEXT("APPLE"), CaseUpdate, RowIndex, ErrorMessage, true));
+	TestEqual(TEXT("The new-case key is appended"), RowIndex, 3);
+	TestFalse(TEXT("A case-insensitive upsert rejects keys that differ only in case"),
+		UDirectiveUtilCsvFunctionLibrary::UpsertCsvRowByKey(
+			CaseKeyed, TEXT("Id"), TEXT("apple"), CaseUpdate, RowIndex, ErrorMessage, false));
+	TestTrue(TEXT("A case-sensitive removal removes only the exact key"),
+		UDirectiveUtilCsvFunctionLibrary::RemoveCsvRowByKey(CaseKeyed, TEXT("Id"), TEXT("Apple"), true));
+	TestEqual(TEXT("The exact-key removal leaves the other keys"), CaseKeyed.Rows.Num(), 3);
+	TestEqualSensitive(TEXT("The lowercase key remains after the exact-key removal"), CaseKeyed.Rows[1].Cells[0], FString(TEXT("apple")));
+
+	FDirectiveUtilCsvDocument CaseBefore;
+	FDirectiveUtilCsvDocument CaseAfter;
+	UDirectiveUtilCsvFunctionLibrary::ParseCsv(
+		TEXT("Id,Color\nApple,red\napple,green\nPear,red\n"), EDirectiveUtilCsvDelimiter::Comma, CaseBefore, ErrorMessage);
+	UDirectiveUtilCsvFunctionLibrary::ParseCsv(
+		TEXT("Id,Color\nApple,red\napple,Green\nPEAR,red\n"), EDirectiveUtilCsvDelimiter::Comma, CaseAfter, ErrorMessage);
+	TestTrue(TEXT("A case-sensitive diff accepts keys that differ only in case"),
+		UDirectiveUtilCsvFunctionLibrary::DiffCsvByKey(CaseBefore, CaseAfter, TEXT("Id"), Diff, ErrorMessage, true));
+	TestTrue(TEXT("A case-only value change is a change"), HoldsOnlyKey(Diff.ChangedKeys, TEXT("apple")));
+	TestTrue(TEXT("A case-sensitive diff adds a key in a new case"), HoldsOnlyKey(Diff.AddedKeys, TEXT("PEAR")));
+	TestTrue(TEXT("A case-sensitive diff removes a key in the old case"), HoldsOnlyKey(Diff.RemovedKeys, TEXT("Pear")));
+	TestFalse(TEXT("A case-insensitive diff rejects keys that differ only in case"),
+		UDirectiveUtilCsvFunctionLibrary::DiffCsvByKey(CaseBefore, CaseAfter, TEXT("Id"), Diff, ErrorMessage, false));
+
+	FDirectiveUtilCsvDocument ColorBefore;
+	FDirectiveUtilCsvDocument ColorAfter;
+	UDirectiveUtilCsvFunctionLibrary::ParseCsv(
+		TEXT("Id,Color\nOne,red\nTwo,blue\n"), EDirectiveUtilCsvDelimiter::Comma, ColorBefore, ErrorMessage);
+	UDirectiveUtilCsvFunctionLibrary::ParseCsv(
+		TEXT("Id,Color\nONE,Red\nTwo,blue\n"), EDirectiveUtilCsvDelimiter::Comma, ColorAfter, ErrorMessage);
+	TestTrue(TEXT("A case-insensitive diff compares the documents"),
+		UDirectiveUtilCsvFunctionLibrary::DiffCsvByKey(ColorBefore, ColorAfter, TEXT("Id"), Diff, ErrorMessage, false));
+	TestTrue(TEXT("A case-insensitive diff still reports a case-only value change"), HoldsOnlyKey(Diff.ChangedKeys, TEXT("ONE")));
+	TestTrue(TEXT("A case-insensitive diff matches keys across case"), Diff.AddedKeys.IsEmpty() && Diff.RemovedKeys.IsEmpty());
+
+	FDirectiveUtilCsvDocument ByteOrderMarkDocument;
+	TestTrue(TEXT("Text with a leading byte-order mark parses"),
+		UDirectiveUtilCsvFunctionLibrary::ParseCsv(
+			FString::Chr(static_cast<TCHAR>(0xFEFF)) + TEXT("Id,Value\nA,1\n"),
+			EDirectiveUtilCsvDelimiter::Comma, ByteOrderMarkDocument, ErrorMessage));
+	TestTrue(TEXT("A leading byte-order mark does not hide the first header"),
+		UDirectiveUtilCsvFunctionLibrary::FindCsvColumn(ByteOrderMarkDocument, TEXT("Id"), ColumnIndex, true));
+	TestEqual(TEXT("The first header follows the byte-order mark"), ColumnIndex, 0);
+	FDirectiveUtilCsvDocument ByteOrderMarkOnly;
+	TestTrue(TEXT("A lone byte-order mark parses"),
+		UDirectiveUtilCsvFunctionLibrary::ParseCsv(
+			FString::Chr(static_cast<TCHAR>(0xFEFF)), EDirectiveUtilCsvDelimiter::Comma, ByteOrderMarkOnly, ErrorMessage));
+	TestEqual(TEXT("A lone byte-order mark is an empty document"), ByteOrderMarkOnly.Rows.Num(), 0);
+	FDirectiveUtilCsvDocument LeadingMarkCell;
+	FDirectiveUtilCsvRow LeadingMarkRow;
+	const FString LeadingMarkValue = FString::Chr(static_cast<TCHAR>(0xFEFF)) + TEXT("x");
+	LeadingMarkRow.Cells = { LeadingMarkValue, TEXT("y") };
+	LeadingMarkCell.Rows.Add(LeadingMarkRow);
+	FString LeadingMarkText;
+	UDirectiveUtilCsvFunctionLibrary::WriteCsv(LeadingMarkCell, LeadingMarkText);
+	FDirectiveUtilCsvDocument LeadingMarkReparsed;
+	TestTrue(TEXT("A first cell that starts with U+FEFF writes and parses"),
+		UDirectiveUtilCsvFunctionLibrary::ParseCsv(LeadingMarkText, EDirectiveUtilCsvDelimiter::Comma, LeadingMarkReparsed, ErrorMessage));
+	TestTrue(TEXT("A first cell that starts with U+FEFF keeps the character"),
+		LeadingMarkReparsed.Rows.Num() == 1 && LeadingMarkReparsed.Rows[0].Cells.Num() == 2
+		&& LeadingMarkReparsed.Rows[0].Cells[0].Equals(LeadingMarkValue, ESearchCase::CaseSensitive));
+
+	const FString EmptyRow(TEXT("\"\"\n"));
+	FString LargestAcceptedText;
+	LargestAcceptedText.Reserve(EmptyRow.Len() * (UDirectiveUtilCsvFunctionLibrary::MaximumRowCount + 1));
+	for (int32 AddedRowCount = 0; AddedRowCount < UDirectiveUtilCsvFunctionLibrary::MaximumRowCount; ++AddedRowCount)
+	{
+		LargestAcceptedText += EmptyRow;
+	}
+	FDirectiveUtilCsvDocument RowLimitDocument;
+	TestTrue(TEXT("Text with exactly MaximumRowCount rows parses"),
+		UDirectiveUtilCsvFunctionLibrary::ParseCsv(LargestAcceptedText, EDirectiveUtilCsvDelimiter::Comma, RowLimitDocument, ErrorMessage));
+	TestEqual(TEXT("Every accepted row is kept"), RowLimitDocument.Rows.Num(), UDirectiveUtilCsvFunctionLibrary::MaximumRowCount);
+	LargestAcceptedText += EmptyRow;
+	TestFalse(TEXT("Text with one row past MaximumRowCount fails"),
+		UDirectiveUtilCsvFunctionLibrary::ParseCsv(LargestAcceptedText, EDirectiveUtilCsvDelimiter::Comma, RowLimitDocument, ErrorMessage));
+	TestTrue(TEXT("A rejected oversized parse leaves no rows"), RowLimitDocument.Rows.IsEmpty());
+	TestFalse(TEXT("A rejected oversized parse reports an error"), ErrorMessage.IsEmpty());
+
+	for (const TCHAR* FunctionName : { TEXT("FindCsvRowByKey"), TEXT("ValidateCsvHeaders"), TEXT("ValidateCsvShape") })
+	{
+		const UFunction* Function = UDirectiveUtilCsvFunctionLibrary::StaticClass()->FindFunctionByName(FName(FunctionName));
+		TestTrue(FString::Printf(TEXT("%s is an impure node"), FunctionName),
+			Function != nullptr && !Function->HasAnyFunctionFlags(FUNC_BlueprintPure));
+	}
 
 	return true;
 }

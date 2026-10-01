@@ -12,8 +12,9 @@
  * path parsing and file management.
  *
  * All path parameters accept absolute paths, or paths relative to the project Saved directory.
- * Reads and ordinary writes go through IFileManager. Atomic writes resolve the active platform
- * layer's physical write path before replacement and therefore require a filesystem-backed path.
+ * Reads, appends, and overwriting writes go through IFileManager. Atomic writes and
+ * no-overwrite writes resolve the active platform layer's physical write path before
+ * replacement and therefore require a filesystem-backed path.
  */
 UCLASS()
 class DIRECTIVEUTILITIESRUNTIME_API UDirectiveUtilFileSystemFunctionLibrary : public UBlueprintFunctionLibrary
@@ -35,11 +36,13 @@ public:
 	static bool ReadTextFile(const FString& Path, FString& OutContents);
 
 	/**
-	 * Reads a text file line by line. Splits on CRLF, LF, and CR sequences.
+	 * Reads a text file line by line. Each CRLF, LF, or CR sequence ends one line. The text after
+	 * the last terminator becomes the final line only when it is not empty, so an empty file has no
+	 * lines, "a\n" has one line, and a file that holds only "\n" has one empty line.
 	 *
 	 * @param Path The file to read.
-	 * @param OutLines Receives one entry per line, without line terminators, or an empty array on failure. A trailing newline does not produce a trailing empty entry.
-	 * @param bIncludeEmptyLines Whether blank lines appear in the output.
+	 * @param OutLines Receives one entry per line, without line terminators, or an empty array on failure.
+	 * @param bIncludeEmptyLines When `false`, lines with no characters are dropped. Lines that hold only spaces or tabs are kept.
 	 * @return `true` when the file was read.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Directive Utilities|FileSystem")
@@ -47,7 +50,9 @@ public:
 
 	/**
 	 * Writes text to a file in UTF-8 without a byte-order mark, replacing any existing content
-	 * unless overwriting is refused.
+	 * unless overwriting is refused. When `bAllowOverwrite` is `false`, the write uses the
+	 * temporary-file path of WriteTextFileAtomic so it cannot replace a file that another writer
+	 * creates first.
 	 *
 	 * @param Path The file to write. Missing parent directories are created only when requested.
 	 * @param Contents The text to write.
@@ -59,14 +64,16 @@ public:
 	static bool WriteTextFile(const FString& Path, const FString& Contents, const bool bCreateDirectories = true, const bool bAllowOverwrite = true);
 
 	/**
-	 * Appends text to a file, creating the file when missing. No separator is inserted between
-	 * the existing contents and the appended text. Existing supported text encodings are read
-	 * first and the complete result is atomically rewritten as UTF-8 without a byte-order mark.
+	 * Appends text to the end of a file, creating the file when missing. No separator is inserted
+	 * and the existing bytes are not rewritten. The text is encoded as UTF-16 when the file starts
+	 * with a UTF-16 byte-order mark, and as UTF-8 without a byte-order mark otherwise. A file in
+	 * another encoding, such as Latin-1, keeps its bytes but receives UTF-8 text. The append is not
+	 * atomic, so a failed call can leave part of the text in the file.
 	 *
 	 * @param Path The file to append to.
 	 * @param Contents The text to append.
 	 * @param bCreateDirectories When `true`, missing parent directories are created.
-	 * @return `true` when the text was appended.
+	 * @return `true` when the text was appended. A UTF-32 file, a UTF-16 file with an odd byte count, or a file whose first bytes cannot be read fails without changing the file.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Directive Utilities|FileSystem")
 	static bool AppendTextFile(const FString& Path, const FString& Contents, const bool bCreateDirectories = true);
@@ -82,7 +89,8 @@ public:
 	static bool ReadBinaryFile(const FString& Path, TArray<uint8>& OutBytes);
 
 	/**
-	 * Writes bytes to a file, replacing any existing content unless overwriting is refused.
+	 * Writes bytes to a file, replacing any existing content unless overwriting is refused. When
+	 * `bAllowOverwrite` is `false`, the write uses the temporary-file path of WriteBinaryFileAtomic.
 	 *
 	 * @param Path The file to write. Missing parent directories are created only when requested.
 	 * @param Bytes The bytes to write.
@@ -93,12 +101,40 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Directive Utilities|FileSystem")
 	static bool WriteBinaryFile(const FString& Path, const TArray<uint8>& Bytes, const bool bCreateDirectories = true, const bool bAllowOverwrite = true);
 
-	/** Writes a temporary text file and atomically installs it after the write succeeds. No-overwrite mode is race-safe. */
+	/**
+	 * Writes text in UTF-8 without a byte-order mark to a temporary sibling file, then moves it over
+	 * the destination so readers see either the old file or the complete new file. When
+	 * `bAllowOverwrite` is `false`, the call fails if the destination exists or another writer
+	 * creates it first. On Mac and Linux filesystems without hard links, such as FAT, exFAT, and
+	 * some network shares, that mode can show an empty destination until the move completes,
+	 * and a writer that replaces the destination during that window is overwritten.
+	 *
+	 * The replacement is a new file. A symbolic link at the destination is replaced rather than
+	 * followed, and the file takes default permissions instead of the old file's permissions. A
+	 * process that exits during the write can leave a `<file>.tmp-<32 hex digits>` sibling behind.
+	 * The destination must be on a filesystem-backed path.
+	 *
+	 * @param Path The file to write.
+	 * @param Contents The text to write.
+	 * @param bCreateDirectories When `true`, missing parent directories are created.
+	 * @param bAllowOverwrite When `false`, the call fails if the file already exists.
+	 * @return `true` when the file was installed. On failure the destination is unchanged.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Directive Utilities|FileSystem")
 	static bool WriteTextFileAtomic(const FString& Path, const FString& Contents,
 		const bool bCreateDirectories = true, const bool bAllowOverwrite = true);
 
-	/** Writes a temporary binary file and atomically installs it after the write succeeds. No-overwrite mode is race-safe. */
+	/**
+	 * Writes bytes to a temporary sibling file, then moves it over the destination so readers see
+	 * either the old file or the complete new file. Overwrite, symbolic link, permission, and
+	 * temporary file behavior match `WriteTextFileAtomic`.
+	 *
+	 * @param Path The file to write.
+	 * @param Bytes The bytes to write.
+	 * @param bCreateDirectories When `true`, missing parent directories are created.
+	 * @param bAllowOverwrite When `false`, the call fails if the file already exists.
+	 * @return `true` when the file was installed. On failure the destination is unchanged.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Directive Utilities|FileSystem")
 	static bool WriteBinaryFileAtomic(const FString& Path, const TArray<uint8>& Bytes,
 		const bool bCreateDirectories = true, const bool bAllowOverwrite = true);

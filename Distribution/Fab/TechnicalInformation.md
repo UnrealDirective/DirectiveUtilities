@@ -21,7 +21,7 @@ Source Code: https://github.com/UnrealDirective/DirectiveUtilities
 
 Number of Blueprints: 0
 
-Number of C++ Classes: 34 production UCLASS types
+Number of C++ Classes: 39 production UCLASS types
 
 Network Replicated: No. The utilities run locally and can be called from replicated gameplay code.
 

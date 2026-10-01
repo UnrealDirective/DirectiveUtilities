@@ -23,4 +23,10 @@ namespace DirectiveUtil
 	 * Returns the input unchanged when platform time routines fail.
 	 */
 	FDateTime LocalToUtc(const FDateTime& LocalDateTime);
+
+	/** Converts like UtcToLocal. Returns false and leaves the output untouched when the conversion fails. */
+	bool TryUtcToLocal(const FDateTime& UtcTimestamp, FDateTime& OutLocalDateTime);
+
+	/** Converts like LocalToUtc. Returns false and leaves the output untouched when the conversion fails. */
+	bool TryLocalToUtc(const FDateTime& LocalDateTime, FDateTime& OutUtcDateTime);
 }

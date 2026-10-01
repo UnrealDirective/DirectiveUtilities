@@ -21,6 +21,11 @@ UDirectiveUtilTask_AsyncLoadAsset* UDirectiveUtilTask_AsyncLoadAsset::AsyncLoadA
 
 void UDirectiveUtilTask_AsyncLoadAsset::Activate()
 {
+	if (IsReadyToDestroy())
+	{
+		return;
+	}
+
 	if (SoftAsset.IsNull())
 	{
 		UE_LOG(LogDirectiveUtil, Warning, TEXT("Async Load Asset failed to activate. The soft object reference is null."));
@@ -37,6 +42,7 @@ void UDirectiveUtilTask_AsyncLoadAsset::Activate()
 		return;
 	}
 
+	RootWithoutGameInstance();
 	StreamableHandle = UAssetManager::GetStreamableManager().RequestAsyncLoad(
 		SoftAsset.ToSoftObjectPath(),
 		FStreamableDelegate::CreateUObject(this, &UDirectiveUtilTask_AsyncLoadAsset::OnLoaded),
@@ -52,6 +58,11 @@ void UDirectiveUtilTask_AsyncLoadAsset::Activate()
 
 void UDirectiveUtilTask_AsyncLoadAsset::OnLoaded()
 {
+	if (IsReadyToDestroy())
+	{
+		return;
+	}
+
 	UObject* LoadedAsset = SoftAsset.Get();
 	if (LoadedAsset)
 	{
@@ -74,6 +85,15 @@ void UDirectiveUtilTask_AsyncLoadAsset::Cancel()
 	SetReadyToDestroy();
 }
 
+void UDirectiveUtilTask_AsyncLoadAsset::SetReadyToDestroy()
+{
+	if (StreamableHandle.IsValid() && StreamableHandle->IsLoadingInProgress())
+	{
+		StreamableHandle->CancelHandle();
+	}
+	Super::SetReadyToDestroy();
+}
+
 UDirectiveUtilTask_AsyncLoadClass* UDirectiveUtilTask_AsyncLoadClass::AsyncLoadClass(UObject* WorldContextObject, const TSoftClassPtr<UObject> AssetClass)
 {
 	UDirectiveUtilTask_AsyncLoadClass* Action = NewObject<UDirectiveUtilTask_AsyncLoadClass>();
@@ -89,6 +109,11 @@ UDirectiveUtilTask_AsyncLoadClass* UDirectiveUtilTask_AsyncLoadClass::AsyncLoadC
 
 void UDirectiveUtilTask_AsyncLoadClass::Activate()
 {
+	if (IsReadyToDestroy())
+	{
+		return;
+	}
+
 	if (SoftClass.IsNull())
 	{
 		UE_LOG(LogDirectiveUtil, Warning, TEXT("Async Load Class failed to activate. The soft class reference is null."));
@@ -105,6 +130,7 @@ void UDirectiveUtilTask_AsyncLoadClass::Activate()
 		return;
 	}
 
+	RootWithoutGameInstance();
 	StreamableHandle = UAssetManager::GetStreamableManager().RequestAsyncLoad(
 		SoftClass.ToSoftObjectPath(),
 		FStreamableDelegate::CreateUObject(this, &UDirectiveUtilTask_AsyncLoadClass::OnLoaded),
@@ -120,6 +146,11 @@ void UDirectiveUtilTask_AsyncLoadClass::Activate()
 
 void UDirectiveUtilTask_AsyncLoadClass::OnLoaded()
 {
+	if (IsReadyToDestroy())
+	{
+		return;
+	}
+
 	UClass* LoadedClass = SoftClass.Get();
 	if (LoadedClass)
 	{
@@ -142,6 +173,15 @@ void UDirectiveUtilTask_AsyncLoadClass::Cancel()
 	SetReadyToDestroy();
 }
 
+void UDirectiveUtilTask_AsyncLoadClass::SetReadyToDestroy()
+{
+	if (StreamableHandle.IsValid() && StreamableHandle->IsLoadingInProgress())
+	{
+		StreamableHandle->CancelHandle();
+	}
+	Super::SetReadyToDestroy();
+}
+
 UDirectiveUtilTask_AsyncLoadAssets* UDirectiveUtilTask_AsyncLoadAssets::AsyncLoadAssets(UObject* WorldContextObject, const TArray<TSoftObjectPtr<UObject>>& Assets)
 {
 	UDirectiveUtilTask_AsyncLoadAssets* Action = NewObject<UDirectiveUtilTask_AsyncLoadAssets>();
@@ -157,6 +197,11 @@ UDirectiveUtilTask_AsyncLoadAssets* UDirectiveUtilTask_AsyncLoadAssets::AsyncLoa
 
 void UDirectiveUtilTask_AsyncLoadAssets::Activate()
 {
+	if (IsReadyToDestroy())
+	{
+		return;
+	}
+
 	TArray<FSoftObjectPath> PathsToLoad;
 	for (const TSoftObjectPtr<UObject>& SoftAsset : SoftAssets)
 	{
@@ -179,6 +224,7 @@ void UDirectiveUtilTask_AsyncLoadAssets::Activate()
 		return;
 	}
 
+	RootWithoutGameInstance();
 	StreamableHandle = UAssetManager::GetStreamableManager().RequestAsyncLoad(
 		MoveTemp(PathsToLoad),
 		FStreamableDelegate::CreateUObject(this, &UDirectiveUtilTask_AsyncLoadAssets::OnLoaded),
@@ -199,7 +245,7 @@ void UDirectiveUtilTask_AsyncLoadAssets::Activate()
 
 void UDirectiveUtilTask_AsyncLoadAssets::OnLoaded()
 {
-	if (bHasCompleted)
+	if (bHasCompleted || IsReadyToDestroy())
 	{
 		return;
 	}
@@ -218,7 +264,7 @@ void UDirectiveUtilTask_AsyncLoadAssets::OnLoaded()
 
 void UDirectiveUtilTask_AsyncLoadAssets::OnUpdate(TSharedRef<FStreamableHandle> Handle)
 {
-	if (bHasCompleted)
+	if (bHasCompleted || IsReadyToDestroy())
 	{
 		return;
 	}
@@ -237,4 +283,14 @@ void UDirectiveUtilTask_AsyncLoadAssets::Cancel()
 		StreamableHandle->CancelHandle();
 	}
 	SetReadyToDestroy();
+}
+
+void UDirectiveUtilTask_AsyncLoadAssets::SetReadyToDestroy()
+{
+	bHasCompleted = true;
+	if (StreamableHandle.IsValid() && StreamableHandle->IsLoadingInProgress())
+	{
+		StreamableHandle->CancelHandle();
+	}
+	Super::SetReadyToDestroy();
 }

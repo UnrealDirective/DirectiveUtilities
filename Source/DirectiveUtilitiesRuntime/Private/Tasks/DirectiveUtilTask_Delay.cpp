@@ -31,9 +31,9 @@ void UDirectiveUtilTask_Delay::EndTask()
 void UDirectiveUtilTask_Delay::Cancel()
 {
 	bFinished = true;
-	if (FTimerManager* TimerManager = GetTimerManager())
+	if (UWorld* World = TimerWorld.Get())
 	{
-		TimerManager->ClearTimer(TimerHandle);
+		World->GetTimerManager().ClearTimer(TimerHandle);
 	}
 	Completed.Clear();
 	Super::Cancel();
@@ -51,6 +51,11 @@ bool UDirectiveUtilTask_Delay::ShouldBroadcastDelegates() const
 
 void UDirectiveUtilTask_Delay::Activate()
 {
+	if (bFinished)
+	{
+		return;
+	}
+
 	UWorld* World = WorldContextObject && GEngine
 		? GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull)
 		: nullptr;
@@ -62,6 +67,8 @@ void UDirectiveUtilTask_Delay::Activate()
 		return;
 	}
 
+	TimerWorld = World;
+	RootWithoutGameInstance();
 	const float ClampedDuration = FMath::IsFinite(Duration)
 		? FMath::Max(Duration, KINDA_SMALL_NUMBER)
 		: KINDA_SMALL_NUMBER;

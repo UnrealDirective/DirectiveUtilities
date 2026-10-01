@@ -36,7 +36,7 @@ Per-library reference for every Blueprint-exposed node. Each page lists the modu
 - [Config Function Library](Nodes/ConfigFunctionLibrary.md) - .ini reads and writes for scalar, vector, rotation, color, array, key, and section values.
 - [Date Time Function Library](Nodes/DateTimeFunctionLibrary.md) - custom pattern format and parse, timezone conversion, and duration formatting.
 - [Bytes Function Library](Nodes/BytesFunctionLibrary.md) - zlib and gzip compression, SHA-256 hashing, and HMAC-SHA256 signing.
-- [Async Tasks](Nodes/AsyncTasks.md) - timed flow, asset loading, traces, and movement.
+- [Async Tasks](Nodes/AsyncTasks.md) - timed flow, asset loading, traces, movement, and file reads, writes, and watching.
 
 ### Editor
 - [Editor Asset Library](Nodes/EditorAssetLibrary.md) - asset query and management helpers.

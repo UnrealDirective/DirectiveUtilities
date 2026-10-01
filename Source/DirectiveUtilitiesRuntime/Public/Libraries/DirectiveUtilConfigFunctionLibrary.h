@@ -16,11 +16,20 @@
  * read sees the new value. Every read loads the file fresh from disk, so external edits are
  * visible immediately and each call pays a full parse.
  *
+ * Reads return stored text as written. Engine macros such as %GAME% are not expanded. When a
+ * key holds several entries, scalar reads return the last one. Reads treat a malformed or
+ * unreadable file as missing, so they return their default or `false`.
+ *
  * A write regenerates the whole file from the parsed model: comments and blank lines in a
- * hand-authored .ini are not preserved. Removing the last key leaves an empty file rather
- * than deleting it. Writes refuse malformed or unreadable existing files. Section and key
- * names must not contain configuration syntax, control characters, surrounding whitespace,
- * or names too long for Unreal's FName representation.
+ * hand-authored .ini are not preserved, but empty sections are. Values that the .ini parser
+ * would change, such as text with leading or trailing tabs, braces, or line breaks, are written
+ * in quotes so they read back unchanged. Clearing the last section leaves an empty file rather
+ * than deleting it. Writes always produce UTF-8 without a byte-order mark. Writes refuse
+ * malformed or unreadable existing files, including lines that the engine parser would join
+ * with the next line or change by dropping unquoted braces. Section and key names must not
+ * contain configuration syntax such as brackets, braces, or double quotes, line breaks,
+ * surrounding whitespace, or names too long for Unreal's FName representation. Key names also
+ * cannot start with an engine config command character: `+`, `-`, `.`, `!`, `@`, `*`, or `^`.
  */
 UCLASS()
 class DIRECTIVEUTILITIESRUNTIME_API UDirectiveUtilConfigFunctionLibrary : public UBlueprintFunctionLibrary
@@ -167,14 +176,16 @@ public:
 	 * @param FilePath The configuration file to write.
 	 * @param SectionName The section that receives the key.
 	 * @param KeyName The key to write.
-	 * @param Values The entries to store. An empty array removes every entry for the key.
+	 * @param Values The entries to store. An empty array removes every entry for the key and
+	 *        leaves the section in place, creating it empty when it was missing.
 	 * @return `true` when the file was written to disk.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Directive Utilities|Config")
 	static bool WriteConfigStringArray(const FString& FilePath, const FString& SectionName, const FString& KeyName, const TArray<FString>& Values);
 
 	/**
-	 * Removes one key from a configuration file and flushes the change to disk.
+	 * Removes one key from a configuration file and flushes the change to disk. Removing the
+	 * last key of a section leaves the empty section in the file.
 	 *
 	 * @param FilePath The configuration file to edit.
 	 * @param SectionName The section that holds the key.
@@ -261,7 +272,7 @@ public:
 	 *
 	 * @param FilePath The configuration file to inspect.
 	 * @param OutSectionNames Receives the section names without brackets, or an empty array when the file does not exist.
-	 * @return `true` when the file exists.
+	 * @return `true` when the file exists and parses.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Directive Utilities|Config")
 	static bool GetConfigSectionNames(const FString& FilePath, TArray<FString>& OutSectionNames);
@@ -272,7 +283,7 @@ public:
 	 * @param FilePath The configuration file to inspect.
 	 * @param SectionName The section to list.
 	 * @param OutKeyNames Receives the key names, or an empty array when the file or section does not exist.
-	 * @return `true` when the file and section exist.
+	 * @return `true` when the file parses and the section exists.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Directive Utilities|Config")
 	static bool GetConfigKeysInSection(const FString& FilePath, const FString& SectionName, TArray<FString>& OutKeyNames);

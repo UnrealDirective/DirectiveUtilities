@@ -32,6 +32,11 @@ namespace
 			|| Character == TEXT('f');
 	}
 
+	bool IsAsciiLetter(TCHAR Character)
+	{
+		return (Character >= TEXT('a') && Character <= TEXT('z')) || (Character >= TEXT('A') && Character <= TEXT('Z'));
+	}
+
 	bool TokenForLetter(TCHAR Letter, int32 RunLength, EDirectiveDateTimeToken& OutToken, int32& OutWidth)
 	{
 		switch (Letter)
@@ -131,10 +136,14 @@ namespace
 						}
 					}
 				}
+				else if (IsAsciiLetter(Character))
+				{
+					return false;
+				}
 				else
 				{
 					int32 RunEnd = Index + 1;
-					while (RunEnd < Length && !IsTokenLetter(Pattern[RunEnd]) && Pattern[RunEnd] != TEXT('\''))
+					while (RunEnd < Length && !IsAsciiLetter(Pattern[RunEnd]) && Pattern[RunEnd] != TEXT('\''))
 					{
 						++RunEnd;
 					}
@@ -265,7 +274,7 @@ bool UDirectiveUtilDateTimeFunctionLibrary::TryParseDateTime(const FString& Text
 	{
 		if (Piece.Token == EDirectiveDateTimeToken::Literal)
 		{
-			if (Text.Mid(Cursor, Piece.Literal.Len()) != Piece.Literal)
+			if (!Text.Mid(Cursor, Piece.Literal.Len()).Equals(Piece.Literal, ESearchCase::CaseSensitive))
 			{
 				return false;
 			}
@@ -324,14 +333,16 @@ bool UDirectiveUtilDateTimeFunctionLibrary::TryParseDateTime(const FString& Text
 	return true;
 }
 
-FDateTime UDirectiveUtilDateTimeFunctionLibrary::ToLocalTime(const FDateTime& UtcDateTime)
+bool UDirectiveUtilDateTimeFunctionLibrary::ToLocalTime(const FDateTime& UtcDateTime, FDateTime& OutLocalDateTime)
 {
-	return DirectiveUtil::UtcToLocal(UtcDateTime);
+	OutLocalDateTime = UtcDateTime;
+	return DirectiveUtil::TryUtcToLocal(UtcDateTime, OutLocalDateTime);
 }
 
-FDateTime UDirectiveUtilDateTimeFunctionLibrary::ToUtcTime(const FDateTime& LocalDateTime)
+bool UDirectiveUtilDateTimeFunctionLibrary::ToUtcTime(const FDateTime& LocalDateTime, FDateTime& OutUtcDateTime)
 {
-	return DirectiveUtil::LocalToUtc(LocalDateTime);
+	OutUtcDateTime = LocalDateTime;
+	return DirectiveUtil::TryLocalToUtc(LocalDateTime, OutUtcDateTime);
 }
 
 FString UDirectiveUtilDateTimeFunctionLibrary::FormatTimeSpan(const FTimespan& TimeSpan, const bool bIncludeMilliseconds)

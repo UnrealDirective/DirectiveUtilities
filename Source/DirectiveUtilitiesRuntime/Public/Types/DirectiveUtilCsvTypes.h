@@ -43,20 +43,21 @@ struct FDirectiveUtilCsvDocument
 	EDirectiveUtilCsvDelimiter Delimiter = EDirectiveUtilCsvDelimiter::Comma;
 };
 
+/** The keyed differences between two CSV documents, as reported by Diff CSV By Key. */
 USTRUCT(BlueprintType)
 struct FDirectiveUtilCsvDiff
 {
 	GENERATED_BODY()
 
-	/** Keys found only in the later document, sorted ascending. */
+	/** Keys found only in the later document, spelled as in that document and sorted ignoring case. */
 	UPROPERTY(BlueprintReadOnly, Category = "CSV")
 	TArray<FString> AddedKeys;
 
-	/** Keys found only in the earlier document, sorted ascending. */
+	/** Keys found only in the earlier document, spelled as in that document and sorted ignoring case. */
 	UPROPERTY(BlueprintReadOnly, Category = "CSV")
 	TArray<FString> RemovedKeys;
 
-	/** Keys whose non-key cells differ, sorted ascending. */
+	/** Keys whose non-key cells differ, spelled as in the later document and sorted ignoring case. Cell values compare with letter case. */
 	UPROPERTY(BlueprintReadOnly, Category = "CSV")
 	TArray<FString> ChangedKeys;
 };

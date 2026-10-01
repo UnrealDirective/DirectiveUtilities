@@ -110,6 +110,9 @@ bool FDirectiveUtilConfigFunctionLibraryTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("The array reads back"),
 		UDirectiveUtilConfigFunctionLibrary::ReadConfigStringArray(FilePath, TEXT("Mods"), TEXT("LoadOrder"), LoadedArray));
 	TestEqual(TEXT("Array entries survive"), LoadedArray, TArray<FString>({ TEXT("a"), TEXT("b") }));
+	TestEqual(TEXT("A scalar read of an array key returns the last entry"),
+		UDirectiveUtilConfigFunctionLibrary::ReadConfigString(FilePath, TEXT("Mods"), TEXT("LoadOrder"), TEXT("missing")),
+		FString(TEXT("b")));
 	TestTrue(TEXT("A scalar replaces every prior array entry"),
 		UDirectiveUtilConfigFunctionLibrary::WriteConfigString(FilePath, TEXT("Mods"), TEXT("LoadOrder"), TEXT("single")));
 	TestTrue(TEXT("The replacement reads as one value"),
@@ -237,6 +240,121 @@ bool FDirectiveUtilConfigFunctionLibraryTest::RunTest(const FString& Parameters)
 		UDirectiveUtilConfigFunctionLibrary::WriteConfigString(
 			OversizedFilePath, TEXT("Safe"), TEXT("Good"), TEXT("2")));
 	IFileManager::Get().Delete(*OversizedFilePath);
+
+	const FString SyntaxPath = FPaths::GetPath(FilePath) / TEXT("Syntax.ini");
+	IFileManager::Get().Delete(*SyntaxPath);
+	const FString MacroValue = TEXT("%GAME%%GAME%%GAME%%GAME%%GAMEDIR%");
+	TestTrue(TEXT("A value with many engine macros writes"),
+		UDirectiveUtilConfigFunctionLibrary::WriteConfigString(SyntaxPath, TEXT("Macros"), TEXT("Value"), MacroValue));
+	TestEqual(TEXT("Engine macros read back verbatim"),
+		UDirectiveUtilConfigFunctionLibrary::ReadConfigString(SyntaxPath, TEXT("Macros"), TEXT("Value"), FString()), MacroValue);
+	TestTrue(TEXT("Macro array entries write"),
+		UDirectiveUtilConfigFunctionLibrary::WriteConfigStringArray(
+			SyntaxPath, TEXT("Macros"), TEXT("List"), { MacroValue, TEXT("%GAME%") }));
+	TArray<FString> MacroArray;
+	TestTrue(TEXT("Macro array entries read"),
+		UDirectiveUtilConfigFunctionLibrary::ReadConfigStringArray(SyntaxPath, TEXT("Macros"), TEXT("List"), MacroArray));
+	TestEqual(TEXT("Macro array entries read back verbatim"), MacroArray, TArray<FString>({ MacroValue, TEXT("%GAME%") }));
+	TestEqual(TEXT("A macro value read as an int uses the stored text"),
+		UDirectiveUtilConfigFunctionLibrary::ReadConfigInt(SyntaxPath, TEXT("Macros"), TEXT("Value"), 9), 0);
+
+	const TArray<FString> ParserSensitiveValues = {
+		TEXT("\tTabbed\t"), TEXT("\nLeading break"), TEXT("Trailing break\r\n"), TEXT("{Braced}"), TEXT("a\"{\"b"),
+		TEXT("]"), TEXT("Ends with \\"), TEXT("\"Quoted\""), TEXT("C:\\Saved\\Path"), FString() };
+	for (const FString& SensitiveValue : ParserSensitiveValues)
+	{
+		TestTrue(*FString::Printf(TEXT("A parser-sensitive value writes: %s"), *SensitiveValue.ReplaceCharWithEscapedChar()),
+			UDirectiveUtilConfigFunctionLibrary::WriteConfigString(SyntaxPath, TEXT("Values"), TEXT("Sensitive"), SensitiveValue));
+		TestEqual(*FString::Printf(TEXT("A parser-sensitive value reads back: %s"), *SensitiveValue.ReplaceCharWithEscapedChar()),
+			UDirectiveUtilConfigFunctionLibrary::ReadConfigString(SyntaxPath, TEXT("Values"), TEXT("Sensitive"), TEXT("default")),
+			SensitiveValue);
+	}
+	TestTrue(TEXT("Parser-sensitive array entries write"),
+		UDirectiveUtilConfigFunctionLibrary::WriteConfigStringArray(SyntaxPath, TEXT("Values"), TEXT("List"), ParserSensitiveValues));
+	TArray<FString> SensitiveArray;
+	TestTrue(TEXT("Parser-sensitive array entries read"),
+		UDirectiveUtilConfigFunctionLibrary::ReadConfigStringArray(SyntaxPath, TEXT("Values"), TEXT("List"), SensitiveArray));
+	TestEqual(TEXT("Parser-sensitive array entries round trip"), SensitiveArray, ParserSensitiveValues);
+
+	FString ContentsBeforeRejectedWrites;
+	TestTrue(TEXT("The syntax file reads as bytes"),
+		FFileHelper::LoadFileToString(ContentsBeforeRejectedWrites, *SyntaxPath));
+	for (const FString& InvalidSection : { FString(TEXT("Bad{Section")), FString(TEXT("Bad}Section")), FString(TEXT("Bad\"Section")) })
+	{
+		TestFalse(*FString::Printf(TEXT("Section names with braces or quotes are rejected: %s"), *InvalidSection),
+			UDirectiveUtilConfigFunctionLibrary::WriteConfigString(SyntaxPath, InvalidSection, TEXT("Key"), TEXT("value")));
+	}
+	for (const FString& InvalidKey : { FString(TEXT("Bad{Key")), FString(TEXT("Bad}Key")), FString(TEXT("Bad\"Key")), FString(TEXT("[Bad")) })
+	{
+		TestFalse(*FString::Printf(TEXT("Keys with braces, quotes, or a leading bracket are rejected: %s"), *InvalidKey),
+			UDirectiveUtilConfigFunctionLibrary::WriteConfigString(SyntaxPath, TEXT("Values"), InvalidKey, TEXT("]")));
+		TestFalse(*FString::Printf(TEXT("Array writes reject the same keys: %s"), *InvalidKey),
+			UDirectiveUtilConfigFunctionLibrary::WriteConfigStringArray(SyntaxPath, TEXT("Values"), InvalidKey, { TEXT("value") }));
+	}
+	for (const FString& CommandKey : { FString(TEXT("+Bad")), FString(TEXT("-Bad")), FString(TEXT(".Bad")), FString(TEXT("!Bad")),
+		FString(TEXT("@Bad")), FString(TEXT("*Bad")), FString(TEXT("^Bad")) })
+	{
+		TestFalse(*FString::Printf(TEXT("Keys with an engine command prefix are rejected: %s"), *CommandKey),
+			UDirectiveUtilConfigFunctionLibrary::WriteConfigString(SyntaxPath, TEXT("Values"), CommandKey, TEXT("value")));
+	}
+	FString ContentsAfterRejectedWrites;
+	TestTrue(TEXT("The syntax file still reads as bytes"),
+		FFileHelper::LoadFileToString(ContentsAfterRejectedWrites, *SyntaxPath));
+	TestEqual(TEXT("Rejected writes leave the file unchanged"), ContentsAfterRejectedWrites, ContentsBeforeRejectedWrites);
+
+	TestTrue(TEXT("Removing the last key of a section succeeds"),
+		UDirectiveUtilConfigFunctionLibrary::RemoveConfigKey(SyntaxPath, TEXT("Macros"), TEXT("Value"))
+		&& UDirectiveUtilConfigFunctionLibrary::RemoveConfigKey(SyntaxPath, TEXT("Macros"), TEXT("List")));
+	TestTrue(TEXT("The emptied section remains"),
+		UDirectiveUtilConfigFunctionLibrary::HasConfigSection(SyntaxPath, TEXT("Macros")));
+	TArray<FString> EmptySectionKeys;
+	TestTrue(TEXT("The emptied section lists keys"),
+		UDirectiveUtilConfigFunctionLibrary::GetConfigKeysInSection(SyntaxPath, TEXT("Macros"), EmptySectionKeys));
+	TestEqual(TEXT("The emptied section holds no keys"), EmptySectionKeys.Num(), 0);
+	TestTrue(TEXT("An empty array write on a new section succeeds"),
+		UDirectiveUtilConfigFunctionLibrary::WriteConfigStringArray(SyntaxPath, TEXT("Fresh"), TEXT("List"), {}));
+	TestTrue(TEXT("The empty array write creates the section"),
+		UDirectiveUtilConfigFunctionLibrary::HasConfigSection(SyntaxPath, TEXT("Fresh")));
+	TestFalse(TEXT("The empty array write stores no key"),
+		UDirectiveUtilConfigFunctionLibrary::ReadConfigStringArray(SyntaxPath, TEXT("Fresh"), TEXT("List"), EmptySectionKeys));
+	IFileManager::Get().Delete(*SyntaxPath);
+
+	const FString HandAuthoredPath = FPaths::GetPath(FilePath) / TEXT("HandAuthored.ini");
+	TestTrue(TEXT("A hand-authored file with an empty section is created"),
+		FFileHelper::SaveStringToFile(FString(TEXT("[Empty]\n[Data]\nRoot=%GAME%%GAME%%GAME%%GAME%\n")), *HandAuthoredPath));
+	TestEqual(TEXT("A hand-authored macro value reads verbatim"),
+		UDirectiveUtilConfigFunctionLibrary::ReadConfigString(HandAuthoredPath, TEXT("Data"), TEXT("Root"), FString()),
+		FString(TEXT("%GAME%%GAME%%GAME%%GAME%")));
+	TestTrue(TEXT("An unrelated write succeeds"),
+		UDirectiveUtilConfigFunctionLibrary::WriteConfigInt(HandAuthoredPath, TEXT("Data"), TEXT("Count"), 2));
+	TestTrue(TEXT("A hand-authored empty section survives an unrelated write"),
+		UDirectiveUtilConfigFunctionLibrary::HasConfigSection(HandAuthoredPath, TEXT("Empty")));
+	IFileManager::Get().Delete(*HandAuthoredPath);
+
+	const FString JoinedLinePath = FPaths::GetPath(FilePath) / TEXT("JoinedLines.ini");
+	for (const FString& JoinedContents : {
+		FString(TEXT("[Safe]\nGood=1\nBad{=2\n")),
+		FString(TEXT("[Safe]\nGood={open\nNext=2\n")),
+		FString(TEXT("[Safe]\nPath=C:\\Dir\\\nNext=2\n")),
+		FString(TEXT("; note {\n[Safe]\nGood=1\n")),
+		FString(TEXT("  [Safe]\nGood=1\n")),
+		FString(TEXT("[Safe]\nGood=1\nJson={\"a\":1}\n")),
+		FString(TEXT("[Safe]\nGood=1\nTail=a}\n")),
+		FString(TEXT("[Safe]\nGood=1\n  ;Hidden=1\n")) })
+	{
+		TestTrue(TEXT("A file the engine parser reads differently is created"),
+			FFileHelper::SaveStringToFile(JoinedContents, *JoinedLinePath));
+		TestEqual(*FString::Printf(TEXT("Reading refuses parser-ambiguous text: %s"), *JoinedContents.ReplaceCharWithEscapedChar()),
+			UDirectiveUtilConfigFunctionLibrary::ReadConfigString(JoinedLinePath, TEXT("Safe"), TEXT("Good"), TEXT("default")),
+			FString(TEXT("default")));
+		TestFalse(*FString::Printf(TEXT("Writing refuses parser-ambiguous text: %s"), *JoinedContents.ReplaceCharWithEscapedChar()),
+			UDirectiveUtilConfigFunctionLibrary::WriteConfigString(JoinedLinePath, TEXT("Safe"), TEXT("Good"), TEXT("3")));
+		FString PreservedJoinedContents;
+		TestTrue(TEXT("The refused file still reads as bytes"),
+			FFileHelper::LoadFileToString(PreservedJoinedContents, *JoinedLinePath));
+		TestEqual(TEXT("The refused file remains unchanged"), PreservedJoinedContents, JoinedContents);
+	}
+	IFileManager::Get().Delete(*JoinedLinePath);
 
 	const FString RelativePath = FString(TEXT("DirectiveUtilTests")) / TEXT("Config") / TEXT("Relative.ini");
 	const FString AbsoluteRelativePath = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir()) / RelativePath;

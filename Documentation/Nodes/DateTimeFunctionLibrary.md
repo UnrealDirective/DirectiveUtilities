@@ -14,7 +14,7 @@ A pattern is literal text mixed with these tokens:
 | ss    | Two-digit second | 03 |
 | fff   | Three-digit millisecond | 412 |
 
-Characters that are not token letters are emitted verbatim. Wrap token characters in single quotes to emit them literally (`yyyy-MM-dd'T'HH:mm`); two consecutive quotes emit one quote character. Any other run of token letters is an error for both formatting and parsing.
+Digits, punctuation, spaces, and non-ASCII characters outside single quotes are emitted verbatim. An unquoted ASCII letter that is not part of a token is an error for both formatting and parsing, so `YYYY-MM-DD` returns false instead of printing `YYYY-08-DD`. A run of token letters with the wrong length, such as `mmm`, is also an error. Wrap letters in single quotes to emit them literally (`yyyy-MM-dd'T'HH:mm`); two consecutive quotes emit one quote character.
 
 The engine covers `FDateTime` construction, arithmetic, component getters, ISO-string conversion, and Unix timestamps; this library fills the remaining gaps without duplicating those nodes.
 
@@ -23,7 +23,7 @@ The engine covers `FDateTime` construction, arithmetic, component getters, ISO-s
 ---
 
 ## Format Date Time
-**Type:** Blueprint Callable &nbsp;|&nbsp; **Category:** `Directive Utilities|DateTime`
+**Type:** Blueprint Pure &nbsp;|&nbsp; **Category:** `Directive Utilities|DateTime`
 
 ```cpp
 static bool FormatDateTime(const FDateTime& DateTime, const FString& Pattern, FString& OutText);
@@ -44,7 +44,7 @@ static bool FormatDateTime(const FDateTime& DateTime, const FString& Pattern, FS
 static bool TryParseDateTime(const FString& Text, const FString& Pattern, FDateTime& OutDateTime);
 ```
 
-Parses a date written in a custom pattern. The whole text must match the whole pattern; extra characters and conflicting repeated fields are errors. Components omitted from the pattern default to year 1, month 1, day 1, and midnight.
+Parses a date written in a custom pattern. The whole text must match the whole pattern; extra characters and conflicting repeated fields are errors. Literal text must match case exactly, so the pattern `yyyy'T'MM` accepts `2026T08` and rejects `2026t08`. Components omitted from the pattern default to year 1, month 1, day 1, and midnight.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -58,19 +58,37 @@ Parses a date written in a custom pattern. The whole text must match the whole p
 **Type:** Blueprint Pure &nbsp;|&nbsp; **Category:** `Directive Utilities|DateTime`
 
 ```cpp
-static FDateTime ToLocalTime(const FDateTime& UtcDateTime);
+static bool ToLocalTime(const FDateTime& UtcDateTime, FDateTime& OutLocalDateTime);
 ```
 
-Converts a UTC timestamp to local wall-clock time using the timezone rules in effect at that instant. Sub-millisecond ticks are preserved. Returns the input unchanged when the platform's time routines reject the value, which covers dates outside the platform's supported range and offsets that would push the result past the `FDateTime` range.
+Converts a UTC timestamp to local wall-clock time using the timezone rules in effect at that instant. Sub-millisecond ticks are preserved.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| UtcDateTime | `const FDateTime&` | The timestamp treated as UTC. |
+| OutLocalDateTime | `FDateTime&` | [out] The local time, or `UtcDateTime` on failure. |
+
+**Returns:** False when the platform's time routines reject the value or the result would fall outside the `FDateTime` range.
+
+**Platform difference:** On Windows, dates before the year 1601 are outside the system time range and fail. On macOS and Linux, those dates convert with the platform's historical zone rules, which often apply local mean time, so the same input can give different results on different platforms.
 
 ## To UTC Time
 **Type:** Blueprint Pure &nbsp;|&nbsp; **Category:** `Directive Utilities|DateTime`
 
 ```cpp
-static FDateTime ToUtcTime(const FDateTime& LocalDateTime);
+static bool ToUtcTime(const FDateTime& LocalDateTime, FDateTime& OutUtcDateTime);
 ```
 
-Converts local wall-clock time to a UTC timestamp using the timezone rules in effect at that instant. Sub-millisecond ticks are preserved. Ambiguous or skipped local times around daylight-saving transitions resolve per the platform's standard rules. Returns the input unchanged when the platform's time routines reject the value.
+Converts local wall-clock time to a UTC timestamp using the timezone rules in effect at that instant. Sub-millisecond ticks are preserved. Ambiguous or skipped local times around daylight-saving transitions resolve per the platform's standard rules.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| LocalDateTime | `const FDateTime&` | The timestamp treated as local time. |
+| OutUtcDateTime | `FDateTime&` | [out] The UTC time, or `LocalDateTime` on failure. |
+
+**Returns:** False when the platform's time routines reject the value or the result would fall outside the `FDateTime` range.
+
+**Platform difference:** On Windows, dates before the year 1601 fail. On macOS and Linux, they convert with the platform's historical zone rules.
 
 ## Format Time Span
 **Type:** Blueprint Pure &nbsp;|&nbsp; **Category:** `Directive Utilities|DateTime`

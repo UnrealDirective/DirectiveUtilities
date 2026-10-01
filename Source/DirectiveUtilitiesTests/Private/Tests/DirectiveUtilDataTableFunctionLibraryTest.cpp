@@ -2,11 +2,97 @@
 
 #include "Libraries/DirectiveUtilDataTableFunctionLibrary.h"
 #include "Libraries/DirectiveUtilCsvFunctionLibrary.h"
-#include "Engine/CompositeDataTable.h"
-#include "Misc/AutomationTest.h"
 #include "Tests/DirectiveUtilTestDataTableRows.h"
+#include "Engine/CompositeDataTable.h"
+#include "Internationalization/Text.h"
+#include "Misc/AutomationTest.h"
+#include "UObject/Class.h"
+#include "UObject/EnumProperty.h"
+#include "UObject/Package.h"
+#include "UObject/UnrealType.h"
+
+#if WITH_EDITOR
+#include "EdGraph/EdGraphPin.h"
+#include "EdGraphSchema_K2.h"
+#include "Engine/UserDefinedEnum.h"
+#include "Kismet2/EnumEditorUtils.h"
+#include "Kismet2/StructureEditorUtils.h"
+#include "StructUtils/UserDefinedStruct.h"
+#include "UserDefinedStructure/UserDefinedStructEditorData.h"
+#endif
 
 #include <limits>
+
+namespace
+{
+	template <typename RowType>
+	RowType* FindRowByName(const UDataTable* Table, const TCHAR* RowName)
+	{
+		return Table != nullptr ? reinterpret_cast<RowType*>(Table->GetRowMap().FindRef(FName(RowName))) : nullptr;
+	}
+
+	UDataTable* ImportWithHeader(UScriptStruct* RowStruct, const FString& CsvText, FString& OutErrorMessage)
+	{
+		return UDirectiveUtilDataTableFunctionLibrary::CreateDataTableFromCsv(
+			RowStruct, CsvText, EDirectiveUtilCsvDelimiter::Comma, true, OutErrorMessage);
+	}
+
+	bool FindExportedCell(const FString& CsvText, const FString& RowName, const FString& ColumnName, FString& OutCell)
+	{
+		FDirectiveUtilCsvDocument Document;
+		FString ParseError;
+		if (!UDirectiveUtilCsvFunctionLibrary::ParseCsv(CsvText, EDirectiveUtilCsvDelimiter::Comma, Document, ParseError)
+			|| Document.Rows.IsEmpty())
+		{
+			return false;
+		}
+
+		const int32 ColumnIndex = Document.Rows[0].Cells.IndexOfByKey(ColumnName);
+		if (ColumnIndex == INDEX_NONE)
+		{
+			return false;
+		}
+		for (int32 RowIndex = 1; RowIndex < Document.Rows.Num(); ++RowIndex)
+		{
+			const TArray<FString>& Cells = Document.Rows[RowIndex].Cells;
+			if (Cells.IsValidIndex(ColumnIndex) && Cells[0] == RowName)
+			{
+				OutCell = Cells[ColumnIndex];
+				return true;
+			}
+		}
+		return false;
+	}
+
+	void SetEnumPropertyValue(const FEnumProperty* Property, void* RowMemory, const int64 Value)
+	{
+		Property->GetUnderlyingProperty()->SetIntPropertyValue(Property->ContainerPtrToValuePtr<void>(RowMemory), Value);
+	}
+
+	void SetByteEnumPropertyValue(const FByteProperty* Property, void* RowMemory, const int64 Value)
+	{
+		Property->SetIntPropertyValue(Property->ContainerPtrToValuePtr<void>(RowMemory), Value);
+	}
+
+	FString QuoteCsvCell(const FString& Cell)
+	{
+		return FString(TEXT("\"")) + Cell.Replace(TEXT("\""), TEXT("\"\"")) + TEXT("\"");
+	}
+
+	struct FRejectedPropertyCase
+	{
+		const TCHAR* Description;
+		UScriptStruct* RowStruct;
+		const TCHAR* PropertyPath;
+		const TCHAR* TopLevelColumn;
+	};
+
+	struct FInvalidRowKeyCase
+	{
+		const TCHAR* Description;
+		const TCHAR* Key;
+	};
+}
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FDirectiveUtilDataTableFunctionLibraryTest,
@@ -94,7 +180,8 @@ bool FDirectiveUtilDataTableFunctionLibraryTest::RunTest(const FString& Paramete
 		TestTrue(TEXT("Serialized FText history exports"),
 			UDirectiveUtilDataTableFunctionLibrary::ExportDataTableToCsv(
 				TextHistoryTable, EDirectiveUtilCsvDelimiter::Comma, true, TextHistoryExport, TextHistoryExportError));
-		TestTrue(TEXT("FText export keeps a structured text literal"), TextHistoryExport.Contains(TEXT("NSLOCTEXT")));
+		TestEqual(TEXT("FText exports its display string without a text macro"), TextHistoryExport,
+			FString(TEXT("Name,Quantity,Weight,bEnchanted,Label,Rarity,Description\nOne,0,0,false,,Common,Localized text\n")));
 	}
 
 	FString Exported;
@@ -103,7 +190,7 @@ bool FDirectiveUtilDataTableFunctionLibraryTest::RunTest(const FString& Paramete
 		UDirectiveUtilDataTableFunctionLibrary::ExportDataTableToCsv(Table, EDirectiveUtilCsvDelimiter::Comma, true, Exported, ExportError));
 	TestTrue(TEXT("Export starts with the header"),
 		Exported.StartsWith(TEXT("Name,Quantity,Weight,bEnchanted,Label,Rarity,Description\n")));
-	TestTrue(TEXT("Export keeps imported values"), Exported.Contains(TEXT("Sword,3,")));
+	TestTrue(TEXT("Export keeps imported values"), Exported.Contains(TEXT("\nSword,3,2.5,true,Fine blade,Rare,A keen edge\n")));
 	TestTrue(TEXT("Export writes enumeration names"), Exported.Contains(TEXT(",Rare,")));
 	TestTrue(TEXT("Rows export in alphabetical order"),
 		Exported.Find(TEXT("\nPotion,")) < Exported.Find(TEXT("\nSword,")));
@@ -211,7 +298,8 @@ bool FDirectiveUtilDataTableFunctionLibraryTest::RunTest(const FString& Paramete
 	{
 		TestTrue(TEXT("The waypoint table exports"),
 			UDirectiveUtilDataTableFunctionLibrary::ExportDataTableToCsv(WaypointTable, EDirectiveUtilCsvDelimiter::Comma, true, WaypointExport, ExportError));
-		TestTrue(TEXT("Struct properties export in engine text format"), WaypointExport.Contains(TEXT("X=")));
+		TestTrue(TEXT("Struct properties export in engine text format"),
+			WaypointExport.Contains(TEXT("\nCamp,\"(X=100,Y=200,Z=0)\",Camp_Fire\n")));
 	}
 
 	const FString NumericCsv = TEXT(
@@ -337,6 +425,17 @@ bool FDirectiveUtilDataTableFunctionLibraryTest::RunTest(const FString& Paramete
 			FDirectiveUtilTestFixedArrayRow::StaticStruct(), TEXT("Name,FixedValues\nOne,1\n"),
 			EDirectiveUtilCsvDelimiter::Comma, true, ErrorMessage));
 	TestTrue(TEXT("The fixed-size array error names the property"), ErrorMessage.Contains(TEXT("FixedValues")));
+	TestNull(TEXT("A struct that can reference objects is rejected"),
+		UDirectiveUtilDataTableFunctionLibrary::CreateDataTableFromCsv(
+			FDirectiveUtilTestInstancedStructRow::StaticStruct(), TEXT("Name,Payload\nOne,()\n"),
+			EDirectiveUtilCsvDelimiter::Comma, true, ErrorMessage));
+	TestTrue(TEXT("The object-referencing struct error names the property"), ErrorMessage.Contains(TEXT("Payload")));
+	UDataTable* InstancedStructTable = NewObject<UDataTable>();
+	InstancedStructTable->RowStruct = FDirectiveUtilTestInstancedStructRow::StaticStruct();
+	FString InstancedStructExport;
+	TestFalse(TEXT("A struct that can reference objects does not export"),
+		UDirectiveUtilDataTableFunctionLibrary::ExportDataTableToCsv(
+			InstancedStructTable, EDirectiveUtilCsvDelimiter::Comma, true, InstancedStructExport, ErrorMessage));
 
 	TestNull(TEXT("An invalid delimiter is rejected by DataTable import"),
 		UDirectiveUtilDataTableFunctionLibrary::CreateDataTableFromCsv(
@@ -492,6 +591,677 @@ bool FDirectiveUtilDataTableFunctionLibraryTest::RunTest(const FString& Paramete
 				Table, MutableTable, SharedDiffOutput, SharedDiffOutput, ChangedRows, ErrorMessage));
 		TestTrue(TEXT("An aliased diff output reports the problem"), !ErrorMessage.IsEmpty());
 	}
+
+	const FString PrecisionCsv = TEXT(
+		"Name,Single,Double,Location\n"
+		"Small,0.0000001,123.4567891,\"(X=0.0000001,Y=123.4567891,Z=1e-30)\"\n"
+		"Tiny,1e-30,0.30000000000000004,\"(X=0.30000000000000004,Y=-2.5e-300,Z=1e+300)\"\n");
+	UDataTable* PrecisionTable = UDirectiveUtilDataTableFunctionLibrary::CreateDataTableFromCsv(
+		FDirectiveUtilTestPrecisionRow::StaticStruct(), PrecisionCsv, EDirectiveUtilCsvDelimiter::Comma, true, ErrorMessage);
+	TestNotNull(TEXT("Small and long floating-point values import"), PrecisionTable);
+	FString PrecisionExport;
+	if (PrecisionTable != nullptr)
+	{
+		TestTrue(TEXT("Floating-point values export"),
+			UDirectiveUtilDataTableFunctionLibrary::ExportDataTableToCsv(
+				PrecisionTable, EDirectiveUtilCsvDelimiter::Comma, true, PrecisionExport, ExportError));
+		TestTrue(TEXT("A double exports every significant digit"), PrecisionExport.Contains(TEXT("123.4567891")));
+		TestTrue(TEXT("A double that needs 17 digits exports all of them"), PrecisionExport.Contains(TEXT("0.30000000000000004")));
+	}
+	UDataTable* PrecisionReimport = UDirectiveUtilDataTableFunctionLibrary::CreateDataTableFromCsv(
+		FDirectiveUtilTestPrecisionRow::StaticStruct(), PrecisionExport, EDirectiveUtilCsvDelimiter::Comma, true, ErrorMessage);
+	TestNotNull(TEXT("The floating-point export reimports"), PrecisionReimport);
+	const FDirectiveUtilTestPrecisionRow* SmallRow = PrecisionReimport
+		? reinterpret_cast<const FDirectiveUtilTestPrecisionRow*>(PrecisionReimport->GetRowMap().FindRef(FName(TEXT("Small"))))
+		: nullptr;
+	const FDirectiveUtilTestPrecisionRow* TinyRow = PrecisionReimport
+		? reinterpret_cast<const FDirectiveUtilTestPrecisionRow*>(PrecisionReimport->GetRowMap().FindRef(FName(TEXT("Tiny"))))
+		: nullptr;
+	if (SmallRow != nullptr && TinyRow != nullptr)
+	{
+		TestTrue(TEXT("float 0.0000001 survives export exactly"), SmallRow->Single == static_cast<float>(0.0000001));
+		TestTrue(TEXT("double 123.4567891 survives export exactly"), SmallRow->Double == 123.4567891);
+		TestTrue(TEXT("Nested struct doubles survive export exactly"),
+			SmallRow->Location == FVector(0.0000001, 123.4567891, 1e-30));
+		TestTrue(TEXT("float 1e-30 survives export exactly"), TinyRow->Single == static_cast<float>(1e-30));
+		TestTrue(TEXT("A 17-digit double survives export exactly"), TinyRow->Double == 0.30000000000000004);
+		TestTrue(TEXT("Nested extreme doubles survive export exactly"),
+			TinyRow->Location == FVector(0.30000000000000004, -2.5e-300, 1e+300));
+	}
+
+	UDataTable* FloatLimitSource = NewObject<UDataTable>();
+	FloatLimitSource->RowStruct = FDirectiveUtilTestPrecisionRow::StaticStruct();
+	FDirectiveUtilTestPrecisionRow FloatLimitRow;
+	FloatLimitRow.Single = TNumericLimits<float>::Max();
+	FloatLimitSource->AddRow(FName(TEXT("Highest")), FloatLimitRow);
+	FloatLimitRow.Single = TNumericLimits<float>::Lowest();
+	FloatLimitSource->AddRow(FName(TEXT("Lowest")), FloatLimitRow);
+	FString FloatLimitExport;
+	TestTrue(TEXT("The float limits export"),
+		UDirectiveUtilDataTableFunctionLibrary::ExportDataTableToCsv(
+			FloatLimitSource, EDirectiveUtilCsvDelimiter::Comma, true, FloatLimitExport, ExportError));
+	UDataTable* FloatLimitReimport = UDirectiveUtilDataTableFunctionLibrary::CreateDataTableFromCsv(
+		FDirectiveUtilTestPrecisionRow::StaticStruct(), FloatLimitExport, EDirectiveUtilCsvDelimiter::Comma, true, ErrorMessage);
+	TestNotNull(TEXT("The float limit export reimports"), FloatLimitReimport);
+	const FDirectiveUtilTestPrecisionRow* HighestRow = FloatLimitReimport
+		? reinterpret_cast<const FDirectiveUtilTestPrecisionRow*>(FloatLimitReimport->GetRowMap().FindRef(FName(TEXT("Highest"))))
+		: nullptr;
+	const FDirectiveUtilTestPrecisionRow* LowestRow = FloatLimitReimport
+		? reinterpret_cast<const FDirectiveUtilTestPrecisionRow*>(FloatLimitReimport->GetRowMap().FindRef(FName(TEXT("Lowest"))))
+		: nullptr;
+	TestTrue(TEXT("The largest float survives export exactly"),
+		HighestRow != nullptr && HighestRow->Single == TNumericLimits<float>::Max());
+	TestTrue(TEXT("The lowest float survives export exactly"),
+		LowestRow != nullptr && LowestRow->Single == TNumericLimits<float>::Lowest());
+	TestNull(TEXT("A float cell that rounds past the largest float is rejected"),
+		UDirectiveUtilDataTableFunctionLibrary::CreateDataTableFromCsv(
+			FDirectiveUtilTestPrecisionRow::StaticStruct(), TEXT("Name,Single\nOver,3.4028236e38\n"),
+			EDirectiveUtilCsvDelimiter::Comma, true, ErrorMessage));
+
+	UDataTable* StructTextSource = NewObject<UDataTable>();
+	StructTextSource->RowStruct = FDirectiveUtilTestStructTextRow::StaticStruct();
+	FDirectiveUtilTestStructTextRow StructTextRow;
+	StructTextRow.Nested.Label = TEXT("Comma, \"quote\", back\\slash (paren)");
+	StructTextRow.Nested.Caption = FText::FromString(TEXT("Plain caption"));
+	StructTextRow.Nested.Rarity = EDirectiveUtilTestRarity::Legendary;
+	StructTextRow.Nested.Scale = 0.1f;
+	StructTextRow.Id = FGuid(0x01234567, 0x89ABCDEF, 0x01234567, 0x89ABCDEF);
+	StructTextSource->AddRow(FName(TEXT("One")), StructTextRow);
+	FString StructTextExport;
+	TestTrue(TEXT("Nested and native-text structs export"),
+		UDirectiveUtilDataTableFunctionLibrary::ExportDataTableToCsv(
+			StructTextSource, EDirectiveUtilCsvDelimiter::Comma, true, StructTextExport, ExportError));
+	TestTrue(TEXT("A native-text struct exports its own format"),
+		StructTextExport.Contains(TEXT("0123456789ABCDEF0123456789ABCDEF")));
+	TestFalse(TEXT("Nested text exports without a text macro"),
+		StructTextExport.Contains(TEXT("INVTEXT")) || StructTextExport.Contains(TEXT("NSLOCTEXT")));
+	UDataTable* StructTextReimport = UDirectiveUtilDataTableFunctionLibrary::CreateDataTableFromCsv(
+		FDirectiveUtilTestStructTextRow::StaticStruct(), StructTextExport, EDirectiveUtilCsvDelimiter::Comma, true, ErrorMessage);
+	TestNotNull(TEXT("The struct text export reimports"), StructTextReimport);
+	const FDirectiveUtilTestStructTextRow* ReimportedStructText = StructTextReimport
+		? reinterpret_cast<const FDirectiveUtilTestStructTextRow*>(StructTextReimport->GetRowMap().FindRef(FName(TEXT("One"))))
+		: nullptr;
+	if (ReimportedStructText != nullptr)
+	{
+		TestEqual(TEXT("A quoted nested string survives"), ReimportedStructText->Nested.Label, StructTextRow.Nested.Label);
+		TestEqual(TEXT("Nested text survives as plain text"), ReimportedStructText->Nested.Caption.ToString(), FString(TEXT("Plain caption")));
+		TestEqual(TEXT("A nested enumeration survives"), ReimportedStructText->Nested.Rarity, EDirectiveUtilTestRarity::Legendary);
+		TestTrue(TEXT("A nested float survives exactly"), ReimportedStructText->Nested.Scale == 0.1f);
+		TestTrue(TEXT("A native-text struct survives"), ReimportedStructText->Id == StructTextRow.Id);
+	}
+
+	TestNull(TEXT("An unknown struct member rejects the import"),
+		UDirectiveUtilDataTableFunctionLibrary::CreateDataTableFromCsv(
+			FDirectiveUtilTestWaypointRow::StaticStruct(), TEXT("Name,Location\nOne,\"(X=1,Yy=2,Z=3)\"\n"),
+			EDirectiveUtilCsvDelimiter::Comma, true, ErrorMessage));
+	TestTrue(TEXT("The unknown struct member is named"), ErrorMessage.Contains(TEXT("Yy")));
+	TestNull(TEXT("A malformed struct member value rejects the import"),
+		UDirectiveUtilDataTableFunctionLibrary::CreateDataTableFromCsv(
+			FDirectiveUtilTestWaypointRow::StaticStruct(), TEXT("Name,Location\nOne,\"(X=abc,Y=2,Z=3)\"\n"),
+			EDirectiveUtilCsvDelimiter::Comma, true, ErrorMessage));
+	TestTrue(TEXT("The malformed struct member is named"), ErrorMessage.Contains(TEXT("Location.X")));
+	TestNull(TEXT("A repeated struct member rejects the import"),
+		UDirectiveUtilDataTableFunctionLibrary::CreateDataTableFromCsv(
+			FDirectiveUtilTestWaypointRow::StaticStruct(), TEXT("Name,Location\nOne,\"(X=1,X=2)\"\n"),
+			EDirectiveUtilCsvDelimiter::Comma, true, ErrorMessage));
+	TestNull(TEXT("Invalid text for a native-text struct rejects the import"),
+		UDirectiveUtilDataTableFunctionLibrary::CreateDataTableFromCsv(
+			FDirectiveUtilTestStructTextRow::StaticStruct(), TEXT("Name,Id\nOne,(Bogus=1)\n"),
+			EDirectiveUtilCsvDelimiter::Comma, true, ErrorMessage));
+	UDataTable* UnwrappedStructTable = UDirectiveUtilDataTableFunctionLibrary::CreateDataTableFromCsv(
+		FDirectiveUtilTestWaypointRow::StaticStruct(), TEXT("Name,Location\nOne,\"X=1,Y=2,Z=3\"\n"),
+		EDirectiveUtilCsvDelimiter::Comma, true, ErrorMessage);
+	const FDirectiveUtilTestWaypointRow* UnwrappedStructRow = UnwrappedStructTable
+		? reinterpret_cast<const FDirectiveUtilTestWaypointRow*>(UnwrappedStructTable->GetRowMap().FindRef(FName(TEXT("One"))))
+		: nullptr;
+	TestNotNull(TEXT("Struct members without parentheses import"), UnwrappedStructRow);
+	if (UnwrappedStructRow != nullptr)
+	{
+		TestTrue(TEXT("Unwrapped struct members keep their values"), UnwrappedStructRow->Location == FVector(1.0, 2.0, 3.0));
+	}
+
+	UDataTable* EmptyRowTable = UDirectiveUtilDataTableFunctionLibrary::CreateDataTableFromCsv(
+		FDirectiveUtilTestEmptyRow::StaticStruct(), TEXT("Name\nAlpha\nBeta\n"), EDirectiveUtilCsvDelimiter::Comma, true, ErrorMessage);
+	TestNotNull(TEXT("A row struct with no properties imports keyed rows"), EmptyRowTable);
+	if (EmptyRowTable != nullptr)
+	{
+		TestEqual(TEXT("Every key-only row imports"), EmptyRowTable->GetRowMap().Num(), 2);
+		FString EmptyRowExport;
+		TestTrue(TEXT("A row struct with no properties exports"),
+			UDirectiveUtilDataTableFunctionLibrary::ExportDataTableToCsv(
+				EmptyRowTable, EDirectiveUtilCsvDelimiter::Comma, true, EmptyRowExport, ExportError));
+		TestEqual(TEXT("Key-only rows export as a Name column"), EmptyRowExport, FString(TEXT("Name\nAlpha\nBeta\n")));
+		TestTrue(TEXT("A row struct with no properties can be replaced"),
+			UDirectiveUtilDataTableFunctionLibrary::ReplaceDataTableFromCsv(
+				EmptyRowTable, TEXT("Name\nGamma\n"), EDirectiveUtilCsvDelimiter::Comma, true, ErrorMessage));
+		TestTrue(TEXT("The replacement key-only row exists"), EmptyRowTable->GetRowMap().Contains(FName(TEXT("Gamma"))));
+		TestEqual(TEXT("The replacement leaves one key-only row"), EmptyRowTable->GetRowMap().Num(), 1);
+	}
+	UDataTable* HeaderlessEmptyRowTable = UDirectiveUtilDataTableFunctionLibrary::CreateDataTableFromCsv(
+		FDirectiveUtilTestEmptyRow::StaticStruct(), TEXT("\"\"\n\"\"\n"), EDirectiveUtilCsvDelimiter::Comma, false, ErrorMessage);
+	TestNotNull(TEXT("Headerless rows import for a row struct with no properties"), HeaderlessEmptyRowTable);
+	if (HeaderlessEmptyRowTable != nullptr)
+	{
+		TestEqual(TEXT("Each headerless empty row becomes a generated key"), HeaderlessEmptyRowTable->GetRowMap().Num(), 2);
+	}
+
+	TestNull(TEXT("A post-import problem rejects creation"),
+		UDirectiveUtilDataTableFunctionLibrary::CreateDataTableFromCsv(
+			FDirectiveUtilTestRejectingRow::StaticStruct(), TEXT("Name,Value\nBad,-1\n"),
+			EDirectiveUtilCsvDelimiter::Comma, true, ErrorMessage));
+	TestTrue(TEXT("The post-import problem is reported"), ErrorMessage.Contains(TEXT("negative value")));
+	UDataTable* RejectingTable = UDirectiveUtilDataTableFunctionLibrary::CreateDataTableFromCsv(
+		FDirectiveUtilTestRejectingRow::StaticStruct(), TEXT("Name,Value\nKeep,1\n"),
+		EDirectiveUtilCsvDelimiter::Comma, true, ErrorMessage);
+	TestNotNull(TEXT("A table with a post-import check imports valid rows"), RejectingTable);
+	if (RejectingTable != nullptr)
+	{
+		int32 ChangeBroadcasts = 0;
+		const FDelegateHandle ChangeHandle = RejectingTable->OnDataTableChanged().AddLambda([&ChangeBroadcasts]()
+		{
+			++ChangeBroadcasts;
+		});
+		const uint8* KeepRowBefore = RejectingTable->GetRowMap().FindRef(FName(TEXT("Keep")));
+		TestFalse(TEXT("A post-import problem rejects replacement"),
+			UDirectiveUtilDataTableFunctionLibrary::ReplaceDataTableFromCsv(
+				RejectingTable, TEXT("Name,Value\nBad,-1\n"), EDirectiveUtilCsvDelimiter::Comma, true, ErrorMessage));
+		TestEqual(TEXT("A rejected replacement does not broadcast a change"), ChangeBroadcasts, 0);
+		TestEqual(TEXT("A rejected replacement keeps the row count"), RejectingTable->GetRowMap().Num(), 1);
+		TestTrue(TEXT("A rejected replacement keeps the original row memory"),
+			RejectingTable->GetRowMap().FindRef(FName(TEXT("Keep"))) == KeepRowBefore);
+		TestTrue(TEXT("A valid replacement after a rejected one succeeds"),
+			UDirectiveUtilDataTableFunctionLibrary::ReplaceDataTableFromCsv(
+				RejectingTable, TEXT("Name,Value\nNew,2\n"), EDirectiveUtilCsvDelimiter::Comma, true, ErrorMessage));
+		TestEqual(TEXT("A successful replacement broadcasts one change"), ChangeBroadcasts, 1);
+		TestFalse(TEXT("A successful replacement removes the old row"), RejectingTable->GetRowMap().Contains(FName(TEXT("Keep"))));
+		RejectingTable->OnDataTableChanged().Remove(ChangeHandle);
+	}
+
+	TestNull(TEXT("A header row without a Name column is rejected"),
+		UDirectiveUtilDataTableFunctionLibrary::CreateDataTableFromCsv(
+			FDirectiveUtilTestInventoryRow::StaticStruct(), TEXT("Quantity\n3\n"),
+			EDirectiveUtilCsvDelimiter::Comma, true, ErrorMessage));
+	TestTrue(TEXT("The missing key column is explained"), ErrorMessage.Contains(TEXT("Name column")));
+	TestNull(TEXT("A row name that is not a valid key is rejected rather than renamed"),
+		UDirectiveUtilDataTableFunctionLibrary::CreateDataTableFromCsv(
+			FDirectiveUtilTestInventoryRow::StaticStruct(), TEXT("Name,Quantity\nIron Sword,1\n"),
+			EDirectiveUtilCsvDelimiter::Comma, true, ErrorMessage));
+	TestTrue(TEXT("The rejected row name is quoted"), ErrorMessage.Contains(TEXT("Iron Sword")));
+
+	TestNull(TEXT("The generated MAX entry of an enumeration is rejected by name"),
+		UDirectiveUtilDataTableFunctionLibrary::CreateDataTableFromCsv(
+			FDirectiveUtilTestInventoryRow::StaticStruct(), TEXT("Name,Rarity\nOne,EDirectiveUtilTestRarity_MAX\n"),
+			EDirectiveUtilCsvDelimiter::Comma, true, ErrorMessage));
+	TestNull(TEXT("The generated MAX entry of an enumeration is rejected by value"),
+		UDirectiveUtilDataTableFunctionLibrary::CreateDataTableFromCsv(
+			FDirectiveUtilTestInventoryRow::StaticStruct(), TEXT("Name,Rarity\nOne,3\n"),
+			EDirectiveUtilCsvDelimiter::Comma, true, ErrorMessage));
+	TestNull(TEXT("The generated MAX entry of a byte-backed enumeration is rejected"),
+		UDirectiveUtilDataTableFunctionLibrary::CreateDataTableFromCsv(
+			FDirectiveUtilTestNumericRow::StaticStruct(), TEXT("Name,LegacyRarity\nOne,EDirectiveUtilTestLegacyRarity_MAX\n"),
+			EDirectiveUtilCsvDelimiter::Comma, true, ErrorMessage));
+	UDataTable* MaxEnumTable = UDirectiveUtilDataTableFunctionLibrary::CreateDataTableFromCsv(
+		FDirectiveUtilTestInventoryRow::StaticStruct(), TEXT("Name,Rarity\nOne,Legendary\n"),
+		EDirectiveUtilCsvDelimiter::Comma, true, ErrorMessage);
+	FDirectiveUtilTestInventoryRow* MaxEnumRow = MaxEnumTable
+		? reinterpret_cast<FDirectiveUtilTestInventoryRow*>(MaxEnumTable->GetRowMap().FindRef(FName(TEXT("One"))))
+		: nullptr;
+	TestNotNull(TEXT("The last declared enumeration value imports"), MaxEnumRow);
+	if (MaxEnumRow != nullptr)
+	{
+		MaxEnumRow->Rarity = static_cast<EDirectiveUtilTestRarity>(3);
+		FString MaxEnumExport;
+		TestFalse(TEXT("The generated MAX entry of an enumeration is rejected on export"),
+			UDirectiveUtilDataTableFunctionLibrary::ExportDataTableToCsv(
+				MaxEnumTable, EDirectiveUtilCsvDelimiter::Comma, true, MaxEnumExport, ExportError));
+		TestTrue(TEXT("The MAX export failure names the property"), ExportError.Contains(TEXT("Rarity")));
+	}
+
+	UDataTable* ByteOrderMarkTable = UDirectiveUtilDataTableFunctionLibrary::CreateDataTableFromCsv(
+		FDirectiveUtilTestInventoryRow::StaticStruct(),
+		FString::Chr(static_cast<TCHAR>(0xFEFF)) + TEXT("Name,Quantity\nMarked,4\n"),
+		EDirectiveUtilCsvDelimiter::Comma, true, ErrorMessage);
+	const FDirectiveUtilTestInventoryRow* ByteOrderMarkRow = ByteOrderMarkTable
+		? reinterpret_cast<const FDirectiveUtilTestInventoryRow*>(ByteOrderMarkTable->GetRowMap().FindRef(FName(TEXT("Marked"))))
+		: nullptr;
+	TestNotNull(TEXT("A leading byte-order mark does not hide the Name header"), ByteOrderMarkRow);
+	if (ByteOrderMarkRow != nullptr)
+	{
+		TestEqual(TEXT("A leading byte-order mark does not hide other headers"), ByteOrderMarkRow->Quantity, 4);
+	}
+
+	const FString SparseEnumCsv = TEXT(
+		"Name,Standing,Grade\n"
+		"Authored,High,High\n"
+		"FullName,EDirectiveUtilTestSparseRank::High,EDirectiveUtilTestSparseTier::High\n"
+		"HighValue,10,20\n"
+		"LowValue,1,2\n");
+	UDataTable* SparseEnumTable = ImportWithHeader(FDirectiveUtilTestSparseEnumRow::StaticStruct(), SparseEnumCsv, ErrorMessage);
+	TestNotNull(TEXT("Every accepted enumeration form imports"), SparseEnumTable);
+	if (SparseEnumTable != nullptr)
+	{
+		TestEqual(TEXT("Every enumeration form row is imported"), SparseEnumTable->GetRowMap().Num(), 4);
+		const TCHAR* const HighRowNames[] = { TEXT("Authored"), TEXT("FullName"), TEXT("HighValue") };
+		for (const TCHAR* RowName : HighRowNames)
+		{
+			const FDirectiveUtilTestSparseEnumRow* HighRow = FindRowByName<const FDirectiveUtilTestSparseEnumRow>(SparseEnumTable, RowName);
+			const bool bHighRowFound = HighRow != nullptr;
+			TestTrue(FString::Printf(TEXT("Enumeration row %s is imported"), RowName), bHighRowFound);
+			if (HighRow != nullptr)
+			{
+				TestEqual(FString::Printf(TEXT("Enumeration row %s sets the enum class to High"), RowName),
+					HighRow->Standing, EDirectiveUtilTestSparseRank::High);
+				TestEqual(FString::Printf(TEXT("Enumeration row %s sets the TEnumAsByte to High"), RowName),
+					static_cast<uint8>(HighRow->Grade.GetValue()), static_cast<uint8>(EDirectiveUtilTestSparseTier::High));
+			}
+		}
+		const FDirectiveUtilTestSparseEnumRow* LowRow = FindRowByName<const FDirectiveUtilTestSparseEnumRow>(SparseEnumTable, TEXT("LowValue"));
+		TestNotNull(TEXT("The declared value 1 imports"), LowRow);
+		if (LowRow != nullptr)
+		{
+			TestEqual(TEXT("The declared value 1 is Low rather than the entry at index 1"),
+				LowRow->Standing, EDirectiveUtilTestSparseRank::Low);
+			TestEqual(TEXT("The declared byte value 2 is Low rather than the entry at index 2"),
+				static_cast<uint8>(LowRow->Grade.GetValue()), static_cast<uint8>(EDirectiveUtilTestSparseTier::Low));
+		}
+
+		FString SparseEnumExport;
+		TestTrue(TEXT("Enumeration rows export"),
+			UDirectiveUtilDataTableFunctionLibrary::ExportDataTableToCsv(
+				SparseEnumTable, EDirectiveUtilCsvDelimiter::Comma, true, SparseEnumExport, ExportError));
+		FString SparseCell;
+		TestTrue(TEXT("The enum class cell of a full-name import is exported"),
+			FindExportedCell(SparseEnumExport, TEXT("FullName"), TEXT("Standing"), SparseCell));
+		TestEqual(TEXT("An enum class exports its authored name"), SparseCell, FString(TEXT("High")));
+		TestTrue(TEXT("The TEnumAsByte cell of a numeric import is exported"),
+			FindExportedCell(SparseEnumExport, TEXT("HighValue"), TEXT("Grade"), SparseCell));
+		TestEqual(TEXT("A TEnumAsByte exports its authored name"), SparseCell, FString(TEXT("High")));
+		TestTrue(TEXT("The enum class cell of a numeric import is exported"),
+			FindExportedCell(SparseEnumExport, TEXT("LowValue"), TEXT("Standing"), SparseCell));
+		TestEqual(TEXT("An enum class value of 1 exports as Low"), SparseCell, FString(TEXT("Low")));
+
+		FDirectiveUtilTestSparseEnumRow* MutableSparseRow = FindRowByName<FDirectiveUtilTestSparseEnumRow>(SparseEnumTable, TEXT("Authored"));
+		const FEnumProperty* StandingProperty = FindFProperty<FEnumProperty>(FDirectiveUtilTestSparseEnumRow::StaticStruct(), TEXT("Standing"));
+		const FByteProperty* GradeProperty = FindFProperty<FByteProperty>(FDirectiveUtilTestSparseEnumRow::StaticStruct(), TEXT("Grade"));
+		TestNotNull(TEXT("The enum class property is reflected as an enum property"), StandingProperty);
+		TestNotNull(TEXT("The TEnumAsByte property is reflected as a byte property"), GradeProperty);
+		if (MutableSparseRow != nullptr && StandingProperty != nullptr && GradeProperty != nullptr)
+		{
+			const int64 HighStanding = static_cast<int64>(EDirectiveUtilTestSparseRank::High);
+			const int64 HighGrade = static_cast<int64>(EDirectiveUtilTestSparseTier::High);
+			const int64 UndeclaredValues[] = { 0, 5, 255 };
+			for (const int64 UndeclaredValue : UndeclaredValues)
+			{
+				SetEnumPropertyValue(StandingProperty, MutableSparseRow, UndeclaredValue);
+				FString UndeclaredExport(TEXT("stale"));
+				TestFalse(FString::Printf(TEXT("An enum class holding undeclared value %lld fails export"), UndeclaredValue),
+					UDirectiveUtilDataTableFunctionLibrary::ExportDataTableToCsv(
+						SparseEnumTable, EDirectiveUtilCsvDelimiter::Comma, true, UndeclaredExport, ExportError));
+				TestTrue(FString::Printf(TEXT("The undeclared enum class value %lld names its property"), UndeclaredValue),
+					ExportError.Contains(TEXT("Standing")));
+				TestTrue(FString::Printf(TEXT("A failed export of enum class value %lld clears the CSV output"), UndeclaredValue),
+					UndeclaredExport.IsEmpty());
+				SetEnumPropertyValue(StandingProperty, MutableSparseRow, HighStanding);
+
+				SetByteEnumPropertyValue(GradeProperty, MutableSparseRow, UndeclaredValue);
+				TestFalse(FString::Printf(TEXT("A TEnumAsByte holding undeclared value %lld fails export"), UndeclaredValue),
+					UDirectiveUtilDataTableFunctionLibrary::ExportDataTableToCsv(
+						SparseEnumTable, EDirectiveUtilCsvDelimiter::Comma, true, UndeclaredExport, ExportError));
+				TestTrue(FString::Printf(TEXT("The undeclared TEnumAsByte value %lld names its property"), UndeclaredValue),
+					ExportError.Contains(TEXT("Grade")));
+				TestTrue(FString::Printf(TEXT("A failed export of TEnumAsByte value %lld clears the CSV output"), UndeclaredValue),
+					UndeclaredExport.IsEmpty());
+				SetByteEnumPropertyValue(GradeProperty, MutableSparseRow, HighGrade);
+			}
+			TestTrue(TEXT("Restoring declared enumeration values makes the table export again"),
+				UDirectiveUtilDataTableFunctionLibrary::ExportDataTableToCsv(
+					SparseEnumTable, EDirectiveUtilCsvDelimiter::Comma, true, SparseEnumExport, ExportError));
+		}
+	}
+
+	const TCHAR* const RejectedStandingCells[] = {
+		TEXT("0"), TEXT("2"), TEXT("-1"), TEXT("300"), TEXT("Medium"), TEXT("EDirectiveUtilTestSparseRank::Medium") };
+	for (const TCHAR* RejectedCell : RejectedStandingCells)
+	{
+		const bool bRejected = ImportWithHeader(FDirectiveUtilTestSparseEnumRow::StaticStruct(),
+			FString::Printf(TEXT("Name,Standing\nOne,%s\n"), RejectedCell), ErrorMessage) == nullptr;
+		TestTrue(FString::Printf(TEXT("The enum class cell '%s' is rejected"), RejectedCell), bRejected);
+		TestTrue(FString::Printf(TEXT("The rejected enum class cell '%s' names its property"), RejectedCell),
+			ErrorMessage.Contains(TEXT("Standing"), ESearchCase::IgnoreCase));
+	}
+	const TCHAR* const RejectedGradeCells[] = {
+		TEXT("0"), TEXT("5"), TEXT("-1"), TEXT("300"), TEXT("Medium"), TEXT("EDirectiveUtilTestSparseTier::Medium") };
+	for (const TCHAR* RejectedCell : RejectedGradeCells)
+	{
+		const bool bRejected = ImportWithHeader(FDirectiveUtilTestSparseEnumRow::StaticStruct(),
+			FString::Printf(TEXT("Name,Grade\nOne,%s\n"), RejectedCell), ErrorMessage) == nullptr;
+		TestTrue(FString::Printf(TEXT("The TEnumAsByte cell '%s' is rejected"), RejectedCell), bRejected);
+		TestTrue(FString::Printf(TEXT("The rejected TEnumAsByte cell '%s' names its property"), RejectedCell),
+			ErrorMessage.Contains(TEXT("Grade"), ESearchCase::IgnoreCase));
+	}
+
+	const FString TextFormsCsv = TEXT(
+		"Name,Description\n"
+		"Loc,\"LOCTEXT(\"\"DirectiveTestKey\"\",\"\"Loc source\"\")\"\n"
+		"Ns,\"NSLOCTEXT(\"\"DirectiveTests\"\",\"\"NsKey\"\",\"\"Ns source\"\")\"\n"
+		"Inv,\"INVTEXT(\"\"Invariant source\"\")\"\n"
+		"Plain,Plain words\n");
+	UDataTable* TextFormsTable = ImportWithHeader(FDirectiveUtilTestInventoryRow::StaticStruct(), TextFormsCsv, ErrorMessage);
+	TestNotNull(TEXT("Text cells in every macro form import"), TextFormsTable);
+	if (TextFormsTable != nullptr)
+	{
+		const FDirectiveUtilTestInventoryRow* LocRow = FindRowByName<const FDirectiveUtilTestInventoryRow>(TextFormsTable, TEXT("Loc"));
+		const FDirectiveUtilTestInventoryRow* NsRow = FindRowByName<const FDirectiveUtilTestInventoryRow>(TextFormsTable, TEXT("Ns"));
+		const FDirectiveUtilTestInventoryRow* InvRow = FindRowByName<const FDirectiveUtilTestInventoryRow>(TextFormsTable, TEXT("Inv"));
+		const FDirectiveUtilTestInventoryRow* PlainRow = FindRowByName<const FDirectiveUtilTestInventoryRow>(TextFormsTable, TEXT("Plain"));
+		TestNotNull(TEXT("The LOCTEXT row imports"), LocRow);
+		TestNotNull(TEXT("The NSLOCTEXT row imports"), NsRow);
+		TestNotNull(TEXT("The INVTEXT row imports"), InvRow);
+		TestNotNull(TEXT("The plain text row imports"), PlainRow);
+		if (LocRow != nullptr)
+		{
+			TestEqual(TEXT("A LOCTEXT cell imports its source string"), LocRow->Description.ToString(), FString(TEXT("Loc source")));
+		}
+		if (NsRow != nullptr)
+		{
+			TestEqual(TEXT("An NSLOCTEXT cell imports its source string"), NsRow->Description.ToString(), FString(TEXT("Ns source")));
+			TestEqual(TEXT("An NSLOCTEXT cell keeps its namespace"),
+				FTextInspector::GetNamespace(NsRow->Description).Get(FString()), FString(TEXT("DirectiveTests")));
+			TestEqual(TEXT("An NSLOCTEXT cell keeps its key"),
+				FTextInspector::GetKey(NsRow->Description).Get(FString()), FString(TEXT("NsKey")));
+		}
+		if (InvRow != nullptr)
+		{
+			TestEqual(TEXT("An INVTEXT cell imports its string"), InvRow->Description.ToString(), FString(TEXT("Invariant source")));
+			TestTrue(TEXT("An INVTEXT cell imports culture-invariant text"), InvRow->Description.IsCultureInvariant());
+		}
+		if (PlainRow != nullptr)
+		{
+			TestEqual(TEXT("A plain cell imports as a literal string"), PlainRow->Description.ToString(), FString(TEXT("Plain words")));
+		}
+	}
+	const UDataTable* StringTableCellTable = ImportWithHeader(FDirectiveUtilTestInventoryRow::StaticStruct(),
+		TEXT("Name,Description\nTable,\"LOCTABLE(\"\"DirectiveTestsTable\"\", \"\"Key\"\")\"\n"), ErrorMessage);
+	const FDirectiveUtilTestInventoryRow* StringTableRow = StringTableCellTable != nullptr
+		? FindRowByName<const FDirectiveUtilTestInventoryRow>(StringTableCellTable, TEXT("Table"))
+		: nullptr;
+	TestNotNull(TEXT("A LOCTABLE cell imports"), StringTableRow);
+	if (StringTableRow != nullptr)
+	{
+		TestEqual(TEXT("A LOCTABLE cell imports as its literal text instead of a string table reference"),
+			StringTableRow->Description.ToString(), FString(TEXT("LOCTABLE(\"DirectiveTestsTable\", \"Key\")")));
+		TestFalse(TEXT("A LOCTABLE cell does not reference a string table"), StringTableRow->Description.IsFromStringTable());
+	}
+	TestNull(TEXT("A text macro followed by other text is rejected"),
+		ImportWithHeader(FDirectiveUtilTestInventoryRow::StaticStruct(),
+			TEXT("Name,Description\nOne,\"INVTEXT(\"\"Invariant\"\") trailing\"\n"), ErrorMessage));
+	TestTrue(TEXT("The rejected text names its property"), ErrorMessage.Contains(TEXT("Description"), ESearchCase::IgnoreCase));
+
+	const FRejectedPropertyCase RejectedCases[] = {
+		{ TEXT("An object reference"), FDirectiveUtilTestObjectReferenceRow::StaticStruct(), TEXT("ObjectReference"), TEXT("ObjectReference") },
+		{ TEXT("A soft object pointer"), FDirectiveUtilTestSoftReferenceRow::StaticStruct(), TEXT("SoftReference"), TEXT("SoftReference") },
+		{ TEXT("A set"), FDirectiveUtilTestSetRow::StaticStruct(), TEXT("Members"), TEXT("Members") },
+		{ TEXT("A map"), FDirectiveUtilTestMapRow::StaticStruct(), TEXT("Lookup"), TEXT("Lookup") },
+		{ TEXT("A dynamic delegate"), FDirectiveUtilTestDelegateRow::StaticStruct(), TEXT("Callback"), TEXT("Callback") },
+		{ TEXT("A nested object reference"), FDirectiveUtilTestNestedObjectReferenceRow::StaticStruct(), TEXT("Payload.ObjectReference"), TEXT("Payload") },
+		{ TEXT("A nested soft object pointer"), FDirectiveUtilTestNestedSoftReferenceRow::StaticStruct(), TEXT("Payload.SoftReference"), TEXT("Payload") },
+		{ TEXT("A nested set"), FDirectiveUtilTestNestedSetRow::StaticStruct(), TEXT("Payload.Members"), TEXT("Payload") },
+		{ TEXT("A nested map"), FDirectiveUtilTestNestedMapRow::StaticStruct(), TEXT("Payload.Lookup"), TEXT("Payload") },
+		{ TEXT("A nested dynamic delegate"), FDirectiveUtilTestNestedDelegateRow::StaticStruct(), TEXT("Payload.Callback"), TEXT("Payload") },
+	};
+	for (const FRejectedPropertyCase& RejectedCase : RejectedCases)
+	{
+		const FString RejectedCsv = FString::Printf(TEXT("Name,%s\nOne,x\n"), RejectedCase.TopLevelColumn);
+		const bool bImportRejected = ImportWithHeader(RejectedCase.RowStruct, RejectedCsv, ErrorMessage) == nullptr;
+		TestTrue(FString::Printf(TEXT("%s rejects import"), RejectedCase.Description), bImportRejected);
+		TestTrue(FString::Printf(TEXT("%s import error names %s"), RejectedCase.Description, RejectedCase.PropertyPath),
+			ErrorMessage.Contains(RejectedCase.PropertyPath, ESearchCase::IgnoreCase));
+
+		UDataTable* RejectedExportTable = NewObject<UDataTable>();
+		RejectedExportTable->RowStruct = RejectedCase.RowStruct;
+		FString RejectedExport(TEXT("stale"));
+		TestFalse(FString::Printf(TEXT("%s rejects export"), RejectedCase.Description),
+			UDirectiveUtilDataTableFunctionLibrary::ExportDataTableToCsv(
+				RejectedExportTable, EDirectiveUtilCsvDelimiter::Comma, true, RejectedExport, ExportError));
+		TestTrue(FString::Printf(TEXT("%s export error names %s"), RejectedCase.Description, RejectedCase.PropertyPath),
+			ExportError.Contains(RejectedCase.PropertyPath, ESearchCase::IgnoreCase));
+		TestTrue(FString::Printf(TEXT("%s clears the CSV output on export failure"), RejectedCase.Description),
+			RejectedExport.IsEmpty());
+	}
+
+	const FInvalidRowKeyCase InvalidRowKeys[] = {
+		{ TEXT("a comma"), TEXT("Bad,Key") },
+		{ TEXT("a double quote"), TEXT("Bad\"Key") },
+		{ TEXT("an apostrophe"), TEXT("Bad'Key") },
+		{ TEXT("a tab"), TEXT("Bad\tKey") },
+		{ TEXT("a line feed"), TEXT("Bad\nKey") },
+		{ TEXT("a carriage return"), TEXT("Bad\rKey") },
+		{ TEXT("a carriage return and line feed"), TEXT("Bad\r\nKey") },
+	};
+	for (const FInvalidRowKeyCase& KeyCase : InvalidRowKeys)
+	{
+		const FString KeyCsv = FString(TEXT("Name,Quantity\n")) + QuoteCsvCell(KeyCase.Key) + TEXT(",1\n");
+		const bool bKeyRejected = ImportWithHeader(FDirectiveUtilTestInventoryRow::StaticStruct(), KeyCsv, ErrorMessage) == nullptr;
+		TestTrue(FString::Printf(TEXT("A row key containing %s is rejected"), KeyCase.Description), bKeyRejected);
+		TestTrue(FString::Printf(TEXT("The rejected row key containing %s is reported for its row"), KeyCase.Description),
+			ErrorMessage.StartsWith(TEXT("Row 2 has the row name")));
+	}
+	TestNull(TEXT("Row keys that differ only in letter case are rejected"),
+		ImportWithHeader(FDirectiveUtilTestInventoryRow::StaticStruct(),
+			TEXT("Name,Quantity\nSword,1\nSWORD,2\n"), ErrorMessage));
+	TestTrue(TEXT("Row keys that differ only in letter case are reported as a repeated row name"),
+		ErrorMessage.StartsWith(TEXT("Row 3 repeats the row name")));
+	TestNull(TEXT("A key that matches an earlier key after trimming is rejected"),
+		ImportWithHeader(FDirectiveUtilTestInventoryRow::StaticStruct(),
+			TEXT("Name,Quantity\nSword,1\n\"  Sword  \",2\n"), ErrorMessage));
+	TestTrue(TEXT("A key that matches after trimming is reported as a repeated row name"),
+		ErrorMessage.StartsWith(TEXT("Row 3 repeats the row name")));
+	UDataTable* TrimmedKeyTable = ImportWithHeader(FDirectiveUtilTestInventoryRow::StaticStruct(),
+		TEXT("Name,Quantity\n\"  Padded  \",1\n\"\tTabbed\t\",2\n"), ErrorMessage);
+	TestNotNull(TEXT("Keys with surrounding whitespace import"), TrimmedKeyTable);
+	if (TrimmedKeyTable != nullptr)
+	{
+		TestEqual(TEXT("Both whitespace-padded keys import as rows"), TrimmedKeyTable->GetRowMap().Num(), 2);
+		const FDirectiveUtilTestInventoryRow* PaddedRow = FindRowByName<const FDirectiveUtilTestInventoryRow>(TrimmedKeyTable, TEXT("Padded"));
+		const FDirectiveUtilTestInventoryRow* TabbedRow = FindRowByName<const FDirectiveUtilTestInventoryRow>(TrimmedKeyTable, TEXT("Tabbed"));
+		TestNotNull(TEXT("Surrounding spaces are trimmed from a row key"), PaddedRow);
+		TestNotNull(TEXT("Surrounding tabs are trimmed from a row key"), TabbedRow);
+		if (PaddedRow != nullptr)
+		{
+			TestEqual(TEXT("The trimmed spaced key keeps its row values"), PaddedRow->Quantity, 1);
+		}
+		if (TabbedRow != nullptr)
+		{
+			TestEqual(TEXT("The trimmed tabbed key keeps its row values"), TabbedRow->Quantity, 2);
+		}
+	}
+
+	UDataTable* NameValueTable = UDirectiveUtilDataTableFunctionLibrary::CreateDataTableFromCsv(
+		FDirectiveUtilTestNameCollisionRow::StaticStruct(), TEXT("Alpha\nBeta\n"),
+		EDirectiveUtilCsvDelimiter::Comma, false, ErrorMessage);
+	TestNotNull(TEXT("A row struct with a Name property imports without a header row"), NameValueTable);
+	if (NameValueTable != nullptr)
+	{
+		TestEqual(TEXT("Each headerless row of a Name property struct imports"), NameValueTable->GetRowMap().Num(), 2);
+		const FDirectiveUtilTestNameCollisionRow* AlphaRow = FindRowByName<const FDirectiveUtilTestNameCollisionRow>(NameValueTable, TEXT("Row_1"));
+		const FDirectiveUtilTestNameCollisionRow* BetaRow = FindRowByName<const FDirectiveUtilTestNameCollisionRow>(NameValueTable, TEXT("Row_2"));
+		TestNotNull(TEXT("The first Name property row has a generated key"), AlphaRow);
+		TestNotNull(TEXT("The second Name property row has a generated key"), BetaRow);
+		if (AlphaRow != nullptr)
+		{
+			TestEqual(TEXT("The first cell binds to the Name property"), AlphaRow->Name, FString(TEXT("Alpha")));
+		}
+		if (BetaRow != nullptr)
+		{
+			TestEqual(TEXT("The second cell binds to the Name property"), BetaRow->Name, FString(TEXT("Beta")));
+		}
+
+		FString NameValueExport;
+		TestTrue(TEXT("A row struct with a Name property exports without a header row"),
+			UDirectiveUtilDataTableFunctionLibrary::ExportDataTableToCsv(
+				NameValueTable, EDirectiveUtilCsvDelimiter::Comma, false, NameValueExport, ExportError));
+		TestEqual(TEXT("The Name property values export in generated key order"), NameValueExport, FString(TEXT("Alpha\nBeta\n")));
+	}
+	TestNull(TEXT("A header row import of a row struct with a Name property is rejected"),
+		ImportWithHeader(FDirectiveUtilTestNameCollisionRow::StaticStruct(), TEXT("Name\nAlpha\n"), ErrorMessage));
+	TestTrue(TEXT("The Name property collision is explained"),
+		ErrorMessage.Contains(TEXT("declares a property named Name"), ESearchCase::CaseSensitive));
+
+	UDataTable* TableStateTable = ImportWithHeader(FDirectiveUtilTestTableStateRow::StaticStruct(),
+		TEXT("Name,Value\nFirst,1\nSecond,2\n"), ErrorMessage);
+	TestNotNull(TEXT("A table of callback-recording rows is created"), TableStateTable);
+	if (TableStateTable != nullptr)
+	{
+		const TCHAR* const CreatedRowNames[] = { TEXT("First"), TEXT("Second") };
+		for (const TCHAR* RowName : CreatedRowNames)
+		{
+			const FDirectiveUtilTestTableStateRow* CreatedRow = FindRowByName<const FDirectiveUtilTestTableStateRow>(TableStateTable, RowName);
+			const bool bCreatedRowFound = CreatedRow != nullptr;
+			TestTrue(FString::Printf(TEXT("Created row %s exists"), RowName), bCreatedRowFound);
+			if (CreatedRow != nullptr)
+			{
+				TestEqual(FString::Printf(TEXT("Created row %s saw an empty table during post-import"), RowName),
+					CreatedRow->TableRowCountDuringImport, 0);
+				TestEqual(FString::Printf(TEXT("Created row %s saw the destination table during post-import"), RowName),
+					CreatedRow->TableNameDuringImport, TableStateTable->GetFName());
+			}
+		}
+
+		TestTrue(TEXT("Replacing a table with three rows succeeds"),
+			UDirectiveUtilDataTableFunctionLibrary::ReplaceDataTableFromCsv(
+				TableStateTable, TEXT("Name,Value\nThird,3\nFourth,4\nFifth,5\n"),
+				EDirectiveUtilCsvDelimiter::Comma, true, ErrorMessage));
+		TestEqual(TEXT("The replacement installs three rows"), TableStateTable->GetRowMap().Num(), 3);
+		const TCHAR* const ReplacedRowNames[] = { TEXT("Third"), TEXT("Fourth"), TEXT("Fifth") };
+		for (const TCHAR* RowName : ReplacedRowNames)
+		{
+			const FDirectiveUtilTestTableStateRow* ReplacedRow = FindRowByName<const FDirectiveUtilTestTableStateRow>(TableStateTable, RowName);
+			const bool bReplacedRowFound = ReplacedRow != nullptr;
+			TestTrue(FString::Printf(TEXT("Replacement row %s exists"), RowName), bReplacedRowFound);
+			if (ReplacedRow != nullptr)
+			{
+				TestEqual(FString::Printf(TEXT("Replacement row %s saw the two previous rows during post-import"), RowName),
+					ReplacedRow->TableRowCountDuringImport, 2);
+				TestEqual(FString::Printf(TEXT("Replacement row %s saw the destination table during post-import"), RowName),
+					ReplacedRow->TableNameDuringImport, TableStateTable->GetFName());
+			}
+		}
+
+		TestTrue(TEXT("Replacing a table with one row succeeds"),
+			UDirectiveUtilDataTableFunctionLibrary::ReplaceDataTableFromCsv(
+				TableStateTable, TEXT("Name,Value\nSixth,6\n"), EDirectiveUtilCsvDelimiter::Comma, true, ErrorMessage));
+		const FDirectiveUtilTestTableStateRow* SixthRow = FindRowByName<const FDirectiveUtilTestTableStateRow>(TableStateTable, TEXT("Sixth"));
+		TestNotNull(TEXT("The second replacement row exists"), SixthRow);
+		if (SixthRow != nullptr)
+		{
+			TestEqual(TEXT("The second replacement saw the three previous rows during post-import"),
+				SixthRow->TableRowCountDuringImport, 3);
+		}
+		TestEqual(TEXT("The second replacement leaves one row"), TableStateTable->GetRowMap().Num(), 1);
+	}
+
+	const UFunction* DiffFunction = UDirectiveUtilDataTableFunctionLibrary::StaticClass()->FindFunctionByName(
+		GET_FUNCTION_NAME_CHECKED(UDirectiveUtilDataTableFunctionLibrary, DiffDataTables));
+	TestTrue(TEXT("Diff Data Tables is an impure node"),
+		DiffFunction != nullptr && !DiffFunction->HasAnyFunctionFlags(FUNC_BlueprintPure));
+
+#if WITH_EDITOR
+	UUserDefinedEnum* TierEnum = Cast<UUserDefinedEnum>(FEnumEditorUtils::CreateUserDefinedEnum(
+		GetTransientPackage(),
+		MakeUniqueObjectName(GetTransientPackage(), UUserDefinedEnum::StaticClass(), FName(TEXT("DirectiveUtilTestTier"))),
+		RF_Public | RF_Transient));
+	UUserDefinedStruct* UserRowStruct = FStructureEditorUtils::CreateUserDefinedStruct(
+		GetTransientPackage(),
+		MakeUniqueObjectName(GetTransientPackage(), UUserDefinedStruct::StaticClass(), FName(TEXT("DirectiveUtilTestUserRow"))),
+		RF_Public | RF_Transient);
+	TestNotNull(TEXT("A transient Blueprint enumeration is created"), TierEnum);
+	TestNotNull(TEXT("A transient Blueprint Structure is created"), UserRowStruct);
+	if (TierEnum != nullptr && UserRowStruct != nullptr)
+	{
+		FEnumEditorUtils::AddNewEnumeratorForUserDefinedEnum(TierEnum);
+		FEnumEditorUtils::AddNewEnumeratorForUserDefinedEnum(TierEnum);
+		FEnumEditorUtils::SetEnumeratorDisplayName(TierEnum, 0, FText::FromString(TEXT("Bronze")));
+		FEnumEditorUtils::SetEnumeratorDisplayName(TierEnum, 1, FText::FromString(TEXT("Gold")));
+
+		FStructureEditorUtils::AddVariable(UserRowStruct, FEdGraphPinType(
+			UEdGraphSchema_K2::PC_Byte, NAME_None, TierEnum, EPinContainerType::None, false, FEdGraphTerminalType()));
+		FStructureEditorUtils::AddVariable(UserRowStruct, FEdGraphPinType(
+			UEdGraphSchema_K2::PC_Real, UEdGraphSchema_K2::PC_Double, nullptr, EPinContainerType::None, false, FEdGraphTerminalType()));
+		const TArray<FStructVariableDescription>& Variables = FStructureEditorUtils::GetVarDesc(UserRowStruct);
+		TestEqual(TEXT("The Blueprint Structure has three members"), Variables.Num(), 3);
+		if (Variables.Num() == 3)
+		{
+			const FGuid ReadyGuid = Variables[0].VarGuid;
+			const FGuid TierGuid = Variables[1].VarGuid;
+			const FGuid RatioGuid = Variables[2].VarGuid;
+			FStructureEditorUtils::RenameVariable(UserRowStruct, ReadyGuid, TEXT("Ready"));
+			FStructureEditorUtils::RenameVariable(UserRowStruct, TierGuid, TEXT("Tier"));
+			FStructureEditorUtils::RenameVariable(UserRowStruct, RatioGuid, TEXT("Ratio"));
+
+			UDataTable* UserTable = UDirectiveUtilDataTableFunctionLibrary::CreateDataTableFromCsv(
+				UserRowStruct, TEXT("Name,Ready,Tier,Ratio\nFirst,true,Gold,0.30000000000000004\n"),
+				EDirectiveUtilCsvDelimiter::Comma, true, ErrorMessage);
+			TestNotNull(TEXT("A Blueprint Structure row imports by authored names"), UserTable);
+			FString UserExport;
+			if (UserTable != nullptr)
+			{
+				TestTrue(TEXT("A Blueprint Structure table exports"),
+					UDirectiveUtilDataTableFunctionLibrary::ExportDataTableToCsv(
+						UserTable, EDirectiveUtilCsvDelimiter::Comma, true, UserExport, ExportError));
+				TestTrue(TEXT("Blueprint Structure headers use authored names"),
+					UserExport.Contains(TEXT("Ready")) && UserExport.Contains(TEXT("Tier")) && UserExport.Contains(TEXT("Ratio"))
+					&& !UserExport.Contains(TEXT("MemberVar")));
+				TestTrue(TEXT("A Blueprint enumeration exports its display name"), UserExport.Contains(TEXT("Gold")));
+				TestTrue(TEXT("A Blueprint Structure double exports every digit"), UserExport.Contains(TEXT("0.30000000000000004")));
+			}
+			UDataTable* UserReimport = UDirectiveUtilDataTableFunctionLibrary::CreateDataTableFromCsv(
+				UserRowStruct, UserExport, EDirectiveUtilCsvDelimiter::Comma, true, ErrorMessage);
+			FString UserReexport;
+			if (UserReimport != nullptr)
+			{
+				UDirectiveUtilDataTableFunctionLibrary::ExportDataTableToCsv(
+					UserReimport, EDirectiveUtilCsvDelimiter::Comma, true, UserReexport, ExportError);
+			}
+			TestEqual(TEXT("A Blueprint Structure table round-trips through CSV"), UserReexport, UserExport);
+			TestNull(TEXT("The generated MAX entry of a Blueprint enumeration is rejected"),
+				UDirectiveUtilDataTableFunctionLibrary::CreateDataTableFromCsv(
+					UserRowStruct, TEXT("Name,Tier\nFirst,2\n"), EDirectiveUtilCsvDelimiter::Comma, true, ErrorMessage));
+			TestNull(TEXT("An undeclared numeric value of a Blueprint enumeration is rejected"),
+				ImportWithHeader(UserRowStruct, TEXT("Name,Tier\nFirst,5\n"), ErrorMessage));
+
+			const FString TierAuthoredName = TierEnum->GetAuthoredNameStringByIndex(1);
+			const FString TierPlainName = TierEnum->GetNameStringByIndex(1);
+			const FString TierFullName = TierEnum->GetNameByIndex(1).ToString();
+			TestEqual(TEXT("The authored name of a Blueprint enumeration entry is its display name"),
+				TierAuthoredName, FString(TEXT("Gold")));
+			TestNotEqual(TEXT("The plain name of a Blueprint enumeration entry differs from its authored name"),
+				TierPlainName, TierAuthoredName);
+			TestNotEqual(TEXT("The full name of a Blueprint enumeration entry differs from its plain name"),
+				TierFullName, TierPlainName);
+			const FString TierFormsCsv = FString::Printf(
+				TEXT("Name,Tier\nAuthored,%s\nPlain,%s\nFull,%s\nValue,%lld\n"),
+				*TierAuthoredName, *TierPlainName, *TierFullName, TierEnum->GetValueByIndex(1));
+			UDataTable* TierFormsTable = ImportWithHeader(UserRowStruct, TierFormsCsv, ErrorMessage);
+			TestNotNull(TEXT("A Blueprint enumeration imports from its authored, plain, and full names and its value"), TierFormsTable);
+			FString TierFormsExport;
+			if (TierFormsTable != nullptr)
+			{
+				TestTrue(TEXT("The Blueprint enumeration forms table exports"),
+					UDirectiveUtilDataTableFunctionLibrary::ExportDataTableToCsv(
+						TierFormsTable, EDirectiveUtilCsvDelimiter::Comma, true, TierFormsExport, ExportError));
+				const TCHAR* const TierFormRowNames[] = { TEXT("Authored"), TEXT("Plain"), TEXT("Full"), TEXT("Value") };
+				for (const TCHAR* RowName : TierFormRowNames)
+				{
+					FString TierCell;
+					const bool bTierCellFound = FindExportedCell(TierFormsExport, RowName, TEXT("Tier"), TierCell);
+					TestTrue(FString::Printf(TEXT("The %s form row exports a Tier cell"), RowName), bTierCellFound);
+					TestEqual(FString::Printf(TEXT("The %s form imports as the Gold entry"), RowName),
+						TierCell, FString(TEXT("Gold")));
+				}
+			}
+		}
+	}
+#endif
 
 	return true;
 }

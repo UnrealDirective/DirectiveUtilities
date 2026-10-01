@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2026 Unreal Directive. Licensed under the MIT License.
+// Copyright (c) 2026 Unreal Directive. Licensed under the MIT License.
 
 
 #include "Tasks/DirectiveUtilTask_MoveToLocation.h"
@@ -81,6 +81,7 @@ void UDirectiveUtilTask_MoveToLocation::Activate()
 	}
 
 	TimerWorld = World;
+	RootWithoutGameInstance();
 	StartLocation = Pawn->GetActorLocation();
 	LastCheckedLocation = StartLocation;
 	CurrentLocation = StartLocation;
@@ -157,6 +158,22 @@ void UDirectiveUtilTask_MoveToLocation::CheckStuckMovement()
 	LastCheckedLocation = CurrentLocation;
 }
 
+void UDirectiveUtilTask_MoveToLocation::SetReadyToDestroy()
+{
+	bHasCompleted = true;
+	ClearTimers();
+	Super::SetReadyToDestroy();
+}
+
+void UDirectiveUtilTask_MoveToLocation::ClearTimers()
+{
+	if (UWorld* World = TimerWorld.Get())
+	{
+		World->GetTimerManager().ClearTimer(TimerHandle);
+		World->GetTimerManager().ClearTimer(StuckTimerHandle);
+	}
+}
+
 void UDirectiveUtilTask_MoveToLocation::ExecuteCompleted(const bool bSuccess)
 {
 	if (bHasCompleted)
@@ -167,11 +184,7 @@ void UDirectiveUtilTask_MoveToLocation::ExecuteCompleted(const bool bSuccess)
 
 	UE_LOG(LogDirectiveUtil, Verbose, TEXT("Movement to location completed. Success: %s."), bSuccess ? TEXT("true") : TEXT("false"));
 
-	if (UWorld* World = TimerWorld.Get())
-	{
-		World->GetTimerManager().ClearTimer(TimerHandle);
-		World->GetTimerManager().ClearTimer(StuckTimerHandle);
-	}
+	ClearTimers();
 	TimerWorld.Reset();
 
 	Completed.Broadcast(bSuccess);
@@ -237,6 +250,7 @@ void UDirectiveUtilTask_MoveToActor::Activate()
 	}
 
 	TimerWorld = World;
+	RootWithoutGameInstance();
 	StartLocation = Pawn->GetActorLocation();
 	LastCheckedLocation = StartLocation;
 	CurrentLocation = StartLocation;
@@ -308,6 +322,22 @@ void UDirectiveUtilTask_MoveToActor::CheckStuckMovement()
 	LastCheckedLocation = CurrentLocation;
 }
 
+void UDirectiveUtilTask_MoveToActor::SetReadyToDestroy()
+{
+	bHasCompleted = true;
+	ClearTimers();
+	Super::SetReadyToDestroy();
+}
+
+void UDirectiveUtilTask_MoveToActor::ClearTimers()
+{
+	if (UWorld* World = TimerWorld.Get())
+	{
+		World->GetTimerManager().ClearTimer(TimerHandle);
+		World->GetTimerManager().ClearTimer(StuckTimerHandle);
+	}
+}
+
 void UDirectiveUtilTask_MoveToActor::ExecuteCompleted(const bool bSuccess)
 {
 	if (bHasCompleted)
@@ -318,11 +348,7 @@ void UDirectiveUtilTask_MoveToActor::ExecuteCompleted(const bool bSuccess)
 
 	UE_LOG(LogDirectiveUtil, Verbose, TEXT("Movement to actor completed. Success: %s."), bSuccess ? TEXT("true") : TEXT("false"));
 
-	if (UWorld* World = TimerWorld.Get())
-	{
-		World->GetTimerManager().ClearTimer(TimerHandle);
-		World->GetTimerManager().ClearTimer(StuckTimerHandle);
-	}
+	ClearTimers();
 	TimerWorld.Reset();
 
 	Completed.Broadcast(bSuccess);

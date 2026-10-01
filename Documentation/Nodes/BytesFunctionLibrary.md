@@ -34,7 +34,7 @@ Compresses a byte array with the requested codec. Empty input produces a valid e
 static bool DecompressBytes(const TArray<uint8>& CompressedData, const int32 ExpectedUncompressedSize, const EDirectiveUtilCompressionFormat Format, TArray<uint8>& OutUncompressedData);
 ```
 
-Decompresses bytes produced by Compress Bytes with the same codec.
+Decompresses a zlib or gzip stream, including one written by another tool such as Python's `zlib` and `gzip` modules. `Format` must match the stream: zlib bytes read as `Gzip`, or gzip bytes read as `Zlib`, fail. A stream whose CRC-32 (gzip) or Adler-32 (zlib) trailer does not match the data fails.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -43,7 +43,7 @@ Decompresses bytes produced by Compress Bytes with the same codec.
 | Format | `const EDirectiveUtilCompressionFormat` | The codec the data was compressed with. |
 | OutUncompressedData | `TArray<uint8>&` | [out] The original bytes, or an empty array on failure. |
 
-**Returns:** True when the complete payload was decompressed to exactly `ExpectedUncompressedSize` bytes. An empty compressed array, size mismatch, corrupt payload, trailing data, or output above the limit fails without partial output.
+**Returns:** True when the complete payload was decompressed to exactly `ExpectedUncompressedSize` bytes. An empty compressed array, an expected size larger or smaller than the real output, a corrupt payload or checksum, trailing data, or output above the limit fails without partial output.
 
 ## SHA 256 Hash Bytes
 **Type:** Blueprint Pure &nbsp;|&nbsp; **Category:** `Directive Utilities|Bytes`
@@ -72,7 +72,7 @@ The string is converted to UTF-8 bytes first.
 static FString HmacSha256Hex(const TArray<uint8>& Message, const TArray<uint8>& Key);
 ```
 
-Computes the HMAC-SHA256 authentication code of a message for a secret key (RFC 2104). Use it to authenticate payloads such as web-service requests. Keys longer than 64 bytes are hashed first; shorter keys, including an empty key, are zero-padded to the block size.
+Computes the HMAC-SHA256 authentication code of a message for a secret key (RFC 2104). Use it to authenticate payloads such as web-service requests. Keys longer than 64 bytes are hashed first. A key of exactly 64 bytes is used as is. Shorter keys, including an empty key, are zero-padded to the block size.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|

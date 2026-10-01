@@ -7,6 +7,8 @@
 #include "Engine/TimerHandle.h"
 #include "DirectiveUtilTask_Delay.generated.h"
 
+class UWorld;
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnDelayCompleted);
 
 /**
@@ -56,6 +58,7 @@ protected:
 	float Duration = 0.0f;
 	bool bFinished = false;
 	FTimerHandle TimerHandle;
+	TWeakObjectPtr<UWorld> TimerWorld;
 
 	void OnDelayComplete();
 };

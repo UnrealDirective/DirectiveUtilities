@@ -2,7 +2,7 @@
 
 > Parsing text into rows and cells, serializing rows back to CSV text, and querying or editing a parsed document.
 
-Parsing supports RFC-style quoted fields: quoted fields may contain separators and newlines, and quotes are escaped by doubling. For compatibility with common exporters, a quote inside an unquoted field remains literal text. A quoted field must end at a separator or row terminator, so trailing content after the closing quote fails. Blank lines are skipped rather than parsed as one empty cell. Writing quotes a field only when it contains the delimiter, a quote, or a newline. CR, LF, and CRLF are accepted as row terminators.
+Parsing supports RFC-style quoted fields: quoted fields may contain separators and newlines, and quotes are escaped by doubling. For compatibility with common exporters, a quote inside an unquoted field remains literal text. A quoted field must end at a separator or row terminator, so trailing content after the closing quote fails. Blank lines are skipped rather than parsed as one empty cell. A leading byte-order mark (U+FEFF) is ignored, so text that still starts with the mark matches its first header. Writing quotes a field only when it contains the delimiter, a quote, or a newline, or starts with U+FEFF. CR, LF, and CRLF are accepted as row terminators.
 
 The library works on strings. Pair it with the [File System library](FileSystemFunctionLibrary.md) to read and write `.csv` files.
 
@@ -28,7 +28,7 @@ Parses CSV text into a document.
 | OutDocument | `FDirectiveUtilCsvDocument&` | [out] The parsed rows, or an empty document on failure. Stores the delimiter. |
 | OutErrorMessage | `FString&` | [out] A description of the first problem found, or an empty string on success. |
 
-**Returns:** True when the text was parsed. Empty input parses to an empty document.
+**Returns:** True when the text was parsed. Empty input parses to an empty document. Text with more than 1,000,000 rows (`MaximumRowCount`), counting the header row, fails without partial output.
 
 ## Write CSV
 **Type:** Blueprint Callable &nbsp;|&nbsp; **Category:** `Directive Utilities|Csv`
@@ -127,7 +127,9 @@ static bool UpsertCsvRowByKey(FDirectiveUtilCsvDocument& Document, const FString
 static bool RemoveCsvRowByKey(FDirectiveUtilCsvDocument& Document, const FString& KeyHeader, const FString& KeyValue, const bool bCaseSensitive = false);
 ```
 
-Row 0 supplies the headers. Header names and keys ignore case by default. A repeated matching header or key is ambiguous and fails instead of choosing one. Upsert updates values by header or appends a rectangular row when the key is missing.
+Row 0 supplies the headers. Header names and keys ignore case by default. With `bCaseSensitive` true, both header names and keys match only with the same letter case, so `Apple` and `apple` are separate rows that can be found, updated, and removed independently. With `bCaseSensitive` false, keys that differ only in case count as a repeated key. A repeated matching header or key is ambiguous and fails instead of choosing one. Upsert updates values by header or appends a rectangular row when the key is missing. `ValuesByHeader` is a map whose keys ignore letter case, so one call cannot hold separate values for headers such as `Value` and `value`; the later entry replaces the earlier one.
+
+Find CSV Row By Key is Blueprint Callable, so it runs once per execution rather than once for each connected output pin.
 
 ## Validate CSV Headers / Validate CSV Shape
 
@@ -136,7 +138,7 @@ static bool ValidateCsvHeaders(const FDirectiveUtilCsvDocument& Document, const 
 static bool ValidateCsvShape(const FDirectiveUtilCsvDocument& Document, TArray<int32>& OutInvalidRowIndices);
 ```
 
-Header validation reports missing required names and repeated names. Its two output arrays must be different variables. Shape validation reports each zero-based data-row index whose cell count differs from the header row.
+Header validation reports missing required names and repeated names. Its two output arrays must be different variables. Both nodes are Blueprint Callable, so each runs once per execution rather than once for each connected output pin. Shape validation reports each zero-based data-row index whose cell count differs from the header row.
 
 ## Diff CSV By Key
 
@@ -144,4 +146,4 @@ Header validation reports missing required names and repeated names. Its two out
 static bool DiffCsvByKey(const FDirectiveUtilCsvDocument& Before, const FDirectiveUtilCsvDocument& After, const FString& KeyHeader, FDirectiveUtilCsvDiff& OutDiff, FString& OutErrorMessage, const bool bCaseSensitive = false);
 ```
 
-Returns sorted added, removed, and changed keys. Both documents must have the same headers in the same order and unique, non-empty keys. Case-insensitive comparisons retain the key spelling from the source document in each result.
+Returns added, removed, and changed keys. Both documents must have the same headers in the same order and unique, non-empty keys. `bCaseSensitive` controls header and key matching. Non-key cell values always compare with letter case, so changing `red` to `Red` reports the key as changed. Case-insensitive comparisons retain the key spelling from the source document in each result: removed keys use the earlier spelling, and added and changed keys use the later spelling. Each array is sorted ignoring case; keys that differ only in case are ordered by character code.

@@ -22,7 +22,7 @@ Version 2.0 replaces UDCore 1.x. Existing Blueprint assets migrate through bundl
 | Config files | .ini reads and writes for scalar, vector, rotation, color, and string-array values, plus key and section management. |
 | Date and time | Custom pattern formatting and parsing, UTC/local conversion, and duration formatting. |
 | Binary data | Zlib and gzip compression, SHA-256 hashing, and HMAC-SHA256 signing. |
-| Async work | Timed flow, asset and class loading, traces, and navigation movement. |
+| Async work | Timed flow, asset and class loading, traces, navigation movement, file reads and writes, and file watching. |
 | Runtime context and profiling | Typed world, build configuration, build target queries, and keyed stopwatches. |
 | Editor actors | Actor filters, selection tools, viewport controls, layout operations, surface snapping, material operations, and mesh queries. |
 | Editor assets | Asset Registry queries, read-only content audits, and asset management helpers for editor scripts. |

@@ -1,8 +1,8 @@
 # Async Tasks
 
-> Latent Blueprint async-action nodes for timed flow, soft asset/class loading, off-thread collision traces, and path-following movement to a location or actor.
+> Latent Blueprint async-action nodes for timed flow, soft asset/class loading, off-thread collision traces, path-following movement to a location or actor, and file reads, writes, and watching.
 
-**Module:** `DirectiveUtilitiesRuntime (Runtime)` &nbsp;|&nbsp; **Header:** `Source/DirectiveUtilitiesRuntime/Public/Tasks/DirectiveUtilTask_Delay.h`, `Source/DirectiveUtilitiesRuntime/Public/Tasks/DirectiveUtilTask_Flow.h`, `Source/DirectiveUtilitiesRuntime/Public/Tasks/DirectiveUtilTask_AsyncLoadAsset.h`, `Source/DirectiveUtilitiesRuntime/Public/Tasks/DirectiveUtilTask_AsyncTrace.h`, `Source/DirectiveUtilitiesRuntime/Public/Tasks/DirectiveUtilTask_MoveToLocation.h`
+**Module:** `DirectiveUtilitiesRuntime (Runtime)` &nbsp;|&nbsp; **Header:** `Source/DirectiveUtilitiesRuntime/Public/Tasks/DirectiveUtilTask_Delay.h`, `Source/DirectiveUtilitiesRuntime/Public/Tasks/DirectiveUtilTask_Flow.h`, `Source/DirectiveUtilitiesRuntime/Public/Tasks/DirectiveUtilTask_AsyncLoadAsset.h`, `Source/DirectiveUtilitiesRuntime/Public/Tasks/DirectiveUtilTask_AsyncTrace.h`, `Source/DirectiveUtilitiesRuntime/Public/Tasks/DirectiveUtilTask_MoveToLocation.h`, `Source/DirectiveUtilitiesRuntime/Public/Tasks/DirectiveUtilTask_FileSystem.h`
 
 ---
 
@@ -294,3 +294,120 @@ Moves the controller's pawn to the goal actor; when movement succeeds or fails t
 
 **Output exec pins:**
 - `Completed` (`FOnAsyncMoveToActor`, `bool bSuccess`): fired when the movement has completed regardless of success; `bSuccess` indicates whether the goal was reached.
+
+## Async Read Text File
+**Type:** Blueprint Callable &nbsp;|&nbsp; **Category:** `Directive Utilities|FileSystem`
+
+```cpp
+static UDirectiveUtilTask_ReadTextFile* ReadTextFileAsync(UObject* WorldContextObject, const FString& Path);
+```
+
+Reads a complete text file on Unreal's worker pool with the same rules as [Read Text File](FileSystemFunctionLibrary.md#read-text-file), then fires one delegate on the game thread. Call `Cancel` on the async proxy to suppress the callback. In a world without a game instance the node keeps itself alive until it finishes and still fires its delegates.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| WorldContextObject | `UObject*` | The world context object. Without one, `Failed` fires from `Activate`. |
+| Path | `const FString&` | The file to read, absolute or relative to the project `Saved` directory. |
+
+**Output exec pins:**
+- `Completed` (`FDirectiveUtilAsyncTextFileResult`, `const FString& Contents, const FString& Error`): fired with the file contents and an empty `Error`.
+- `Failed` (`FDirectiveUtilAsyncTextFileResult`, `const FString& Contents, const FString& Error`): fired with empty `Contents` when the world context or path is invalid or the file cannot be read.
+
+## Async Read Binary File
+**Type:** Blueprint Callable &nbsp;|&nbsp; **Category:** `Directive Utilities|FileSystem`
+
+```cpp
+static UDirectiveUtilTask_ReadBinaryFile* ReadBinaryFileAsync(UObject* WorldContextObject, const FString& Path);
+```
+
+Reads a complete binary file on Unreal's worker pool, then fires one delegate on the game thread. Cancellation and worlds without a game instance behave as in [Async Read Text File](#async-read-text-file).
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| WorldContextObject | `UObject*` | The world context object. Without one, `Failed` fires from `Activate`. |
+| Path | `const FString&` | The file to read, absolute or relative to the project `Saved` directory. |
+
+**Output exec pins:**
+- `Completed` (`FDirectiveUtilAsyncBinaryFileResult`, `const TArray<uint8>& Bytes, const FString& Error`): fired with the file bytes and an empty `Error`.
+- `Failed` (`FDirectiveUtilAsyncBinaryFileResult`, `const TArray<uint8>& Bytes, const FString& Error`): fired with empty `Bytes` when the world context or path is invalid or the file cannot be read.
+
+## Async Write Text File
+**Type:** Blueprint Callable &nbsp;|&nbsp; **Category:** `Directive Utilities|FileSystem`
+
+```cpp
+static UDirectiveUtilTask_WriteTextFile* WriteTextFileAsync(
+    UObject* WorldContextObject,
+    const FString& Path,
+    const FString& Contents,
+    bool bCreateDirectories = true,
+    bool bAllowOverwrite = true,
+    bool bAtomic = true);
+```
+
+Writes text as UTF-8 without a byte-order mark on Unreal's worker pool, then fires one delegate on the game thread. `bAtomic` selects [Write Text File Atomic](FileSystemFunctionLibrary.md#write-text-file-atomic--write-binary-file-atomic) or [Write Text File](FileSystemFunctionLibrary.md#write-text-file--write-binary-file). `Cancel` suppresses the callback, but a write that has already started still finishes on disk. Worlds without a game instance behave as in [Async Read Text File](#async-read-text-file).
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| WorldContextObject | `UObject*` | The world context object. Without one, `Failed` fires from `Activate`. |
+| Path | `const FString&` | The file to write, absolute or relative to the project `Saved` directory. |
+| Contents | `const FString&` | The text to write. |
+| bCreateDirectories | `bool` | Creates missing parent directories when true. |
+| bAllowOverwrite | `bool` | When false, the write fails if the file already exists. |
+| bAtomic | `bool` | When true, writes a temporary sibling and moves it over the destination. |
+
+**Output exec pins:**
+- `Completed` (`FDirectiveUtilAsyncFileWriteResult`, `const FString& Error`): fired after the file is written; `Error` is empty.
+- `Failed` (`FDirectiveUtilAsyncFileWriteResult`, `const FString& Error`): fired when the world context or path is invalid, overwriting was refused, or the write failed.
+
+## Async Write Binary File
+**Type:** Blueprint Callable &nbsp;|&nbsp; **Category:** `Directive Utilities|FileSystem`
+
+```cpp
+static UDirectiveUtilTask_WriteBinaryFile* WriteBinaryFileAsync(
+    UObject* WorldContextObject,
+    const FString& Path,
+    const TArray<uint8>& Bytes,
+    bool bCreateDirectories = true,
+    bool bAllowOverwrite = true,
+    bool bAtomic = true);
+```
+
+Writes bytes on Unreal's worker pool, then fires one delegate on the game thread. Options, cancellation, and failures match [Async Write Text File](#async-write-text-file).
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| WorldContextObject | `UObject*` | The world context object. Without one, `Failed` fires from `Activate`. |
+| Path | `const FString&` | The file to write, absolute or relative to the project `Saved` directory. |
+| Bytes | `const TArray<uint8>&` | The bytes to write. |
+| bCreateDirectories | `bool` | Creates missing parent directories when true. |
+| bAllowOverwrite | `bool` | When false, the write fails if the file already exists. |
+| bAtomic | `bool` | When true, writes a temporary sibling and moves it over the destination. |
+
+**Output exec pins:**
+- `Completed` (`FDirectiveUtilAsyncFileWriteResult`, `const FString& Error`): fired after the file is written; `Error` is empty.
+- `Failed` (`FDirectiveUtilAsyncFileWriteResult`, `const FString& Error`): fired when the world context or path is invalid, overwriting was refused, or the write failed.
+
+## Watch File
+**Type:** Blueprint Callable &nbsp;|&nbsp; **Category:** `Directive Utilities|FileSystem`
+
+```cpp
+static UDirectiveUtilTask_WatchFile* WatchFile(UObject* WorldContextObject, const FString& Path, float PollInterval = 0.25f);
+```
+
+Polls one file until `Cancel` is called or the world is cleaned up. Polling uses real time on the engine's core ticker, so game pause and time dilation do not affect it. Each poll compares existence, size, and modification time, plus a CRC-32 of files up to 1 MiB that changed in the last 2 seconds. Polls read the file on Unreal's worker pool and fire `Changed` on the game thread. Several writes between two polls are reported as one change. [Watch File](FileSystemFunctionLibrary.md#watch-file) lists the detection limits. Worlds without a game instance behave as in [Async Read Text File](#async-read-text-file).
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| WorldContextObject | `UObject*` | The world context object. Without one, `Failed` fires from `Activate`. |
+| Path | `const FString&` | The file to watch, absolute or relative to the project `Saved` directory. |
+| PollInterval | `float` | Real seconds between polls. Values shorter than one frame poll once per frame. Non-positive and non-finite values fire `Failed`. |
+
+**Output exec pins:**
+- `Changed` (`FDirectiveUtilFileChanged`, `EDirectiveUtilFileChangeType ChangeType, const FString& Path`): fired once per detected change with `Created`, `Modified`, or `Deleted` and the path as it was passed in.
+- `Failed` (`FDirectiveUtilFileWatchFailed`, `const FString& Error`): fired from `Activate` when the world context, path, or poll interval is invalid. No further polls run.
+
+## Worlds without a game instance
+
+Async nodes normally stay alive by registering with the world's game instance. Editor worlds, such as those used by Editor Utility Blueprints, have no game instance. In those worlds the delay, flow, load, trace, movement, and file nodes keep themselves alive until they finish, are canceled, or the world is cleaned up, and their delegates still fire. Timers run on the world's timer manager, so they follow that world's time.
+
+World cleanup stops a pending node and releases it without firing its delegates. A node never fires a delegate after it has finished or been canceled. A node created without a world context cannot start timers, traces, or movement. The load nodes do not need a world and keep themselves alive until the load finishes or is canceled.

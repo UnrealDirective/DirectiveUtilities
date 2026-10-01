@@ -22,14 +22,45 @@ void UDirectiveUtilAsyncActionBase::RegisterWithGameInstance(const UObject* Worl
 
 void UDirectiveUtilAsyncActionBase::SetReadyToDestroy()
 {
+	bReadyToDestroy = true;
 	UnbindWorldCleanup();
+	UnrootWithoutGameInstance();
 	Super::SetReadyToDestroy();
 }
 
 void UDirectiveUtilAsyncActionBase::BeginDestroy()
 {
 	UnbindWorldCleanup();
+	UnrootWithoutGameInstance();
 	Super::BeginDestroy();
+}
+
+void UDirectiveUtilAsyncActionBase::RootWithoutGameInstance()
+{
+	if (!bReadyToDestroy && !bKeptAlive && !RegisteredWithGameInstance.IsValid())
+	{
+		AddToRoot();
+		bKeptAlive = true;
+	}
+}
+
+bool UDirectiveUtilAsyncActionBase::IsRootedWithoutGameInstance() const
+{
+	return bKeptAlive;
+}
+
+bool UDirectiveUtilAsyncActionBase::IsReadyToDestroy() const
+{
+	return bReadyToDestroy;
+}
+
+void UDirectiveUtilAsyncActionBase::UnrootWithoutGameInstance()
+{
+	if (bKeptAlive)
+	{
+		RemoveFromRoot();
+		bKeptAlive = false;
+	}
 }
 
 void UDirectiveUtilAsyncActionBase::HandleWorldCleanup(
@@ -70,14 +101,50 @@ void UDirectiveUtilCancellableAsyncAction::RegisterWithGameInstance(const UObjec
 
 void UDirectiveUtilCancellableAsyncAction::SetReadyToDestroy()
 {
+	bReadyToDestroy = true;
 	UnbindWorldCleanup();
+	UnrootWithoutGameInstance();
 	Super::SetReadyToDestroy();
+}
+
+bool UDirectiveUtilCancellableAsyncAction::ShouldBroadcastDelegates() const
+{
+	return bKeptAlive || Super::ShouldBroadcastDelegates();
 }
 
 void UDirectiveUtilCancellableAsyncAction::BeginDestroy()
 {
 	UnbindWorldCleanup();
+	UnrootWithoutGameInstance();
 	Super::BeginDestroy();
+}
+
+void UDirectiveUtilCancellableAsyncAction::RootWithoutGameInstance()
+{
+	if (!bReadyToDestroy && !bKeptAlive && !IsRegistered())
+	{
+		AddToRoot();
+		bKeptAlive = true;
+	}
+}
+
+bool UDirectiveUtilCancellableAsyncAction::IsRootedWithoutGameInstance() const
+{
+	return bKeptAlive;
+}
+
+bool UDirectiveUtilCancellableAsyncAction::IsReadyToDestroy() const
+{
+	return bReadyToDestroy;
+}
+
+void UDirectiveUtilCancellableAsyncAction::UnrootWithoutGameInstance()
+{
+	if (bKeptAlive)
+	{
+		RemoveFromRoot();
+		bKeptAlive = false;
+	}
 }
 
 void UDirectiveUtilCancellableAsyncAction::HandleWorldCleanup(

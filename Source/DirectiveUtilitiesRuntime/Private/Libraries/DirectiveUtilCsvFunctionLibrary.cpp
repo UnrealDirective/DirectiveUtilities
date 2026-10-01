@@ -3,6 +3,8 @@
 
 #include "Libraries/DirectiveUtilCsvFunctionLibrary.h"
 
+#include "Misc/Crc.h"
+
 namespace
 {
 	bool TryGetDelimiterCharacter(const EDirectiveUtilCsvDelimiter Delimiter, TCHAR& OutCharacter)
@@ -26,8 +28,10 @@ namespace
 
 	bool CellNeedsQuotes(const FString& Cell, const TCHAR Separator)
 	{
+		// Parsing skips U+FEFF at the start of the text as a byte-order mark, so a leading one must be quoted to survive.
+		constexpr TCHAR ByteOrderMark = 0xFEFF;
 		return Cell.Contains(TEXT("\"")) || Cell.Contains(TEXT("\r")) || Cell.Contains(TEXT("\n"))
-			|| Cell.Contains(FString::Chr(Separator));
+			|| Cell.Contains(FString::Chr(Separator)) || (!Cell.IsEmpty() && Cell[0] == ByteOrderMark);
 	}
 
 	void AppendQuotedCell(FString& OutText, const FString& Cell)
@@ -67,9 +71,44 @@ namespace
 		return OutColumnIndex != INDEX_NONE;
 	}
 
+	struct FKeyedRow
+	{
+		FString SourceKey;
+		const FDirectiveUtilCsvRow* Row = nullptr;
+	};
+
+	// FString's default hash and equality ignore case, so callers fold the key before lookup instead.
+	struct FCaseSensitiveKeyFuncs : TDefaultMapKeyFuncs<FString, FKeyedRow, false>
+	{
+		static bool Matches(KeyInitType A, KeyInitType B)
+		{
+			return A.Equals(B, ESearchCase::CaseSensitive);
+		}
+
+		static uint32 GetKeyHash(KeyInitType Key)
+		{
+			return FCrc::StrCrc32(*Key);
+		}
+	};
+
+	using FKeyedRowMap = TMap<FString, FKeyedRow, FDefaultSetAllocator, FCaseSensitiveKeyFuncs>;
+
+	FString MakeLookupKey(const FString& Key, const bool bCaseSensitive)
+	{
+		return bCaseSensitive ? Key : Key.ToLower();
+	}
+
+	struct FSortedKeyLess
+	{
+		bool operator()(const FString& A, const FString& B) const
+		{
+			const int32 IgnoringCase = A.Compare(B, ESearchCase::IgnoreCase);
+			return IgnoringCase != 0 ? IgnoringCase < 0 : A.Compare(B, ESearchCase::CaseSensitive) < 0;
+		}
+	};
+
 	bool BuildKeyedRows(const FDirectiveUtilCsvDocument& Document, const FString& KeyHeader,
-		const bool bCaseSensitive, TMap<FString, TPair<FString, const FDirectiveUtilCsvRow*>>& OutRows,
-		FString& OutErrorMessage)
+		const bool bCaseSensitive, FKeyedRowMap& OutRows, FString& OutErrorMessage)
 	{
 		OutRows.Reset();
 		int32 KeyColumn = INDEX_NONE;
@@ -88,18 +127,22 @@ namespace
 				return false;
 			}
 
-			const FString Key = bCaseSensitive ? Row.Cells[KeyColumn] : Row.Cells[KeyColumn].ToLower();
-			if (Key.IsEmpty())
+			const FString& SourceKey = Row.Cells[KeyColumn];
+			if (SourceKey.IsEmpty())
 			{
 				OutErrorMessage = FString::Printf(TEXT("Row %d has an empty value for key column '%s'."), RowIndex + 1, *KeyHeader);
 				return false;
 			}
-			if (OutRows.Contains(Key))
+			const FString LookupKey = MakeLookupKey(SourceKey, bCaseSensitive);
+			if (OutRows.Contains(LookupKey))
 			{
-				OutErrorMessage = FString::Printf(TEXT("Key '%s' appears more than once."), *Row.Cells[KeyColumn]);
+				OutErrorMessage = FString::Printf(TEXT("Key '%s' appears more than once."), *SourceKey);
 				return false;
 			}
-			OutRows.Add(Key, TPair<FString, const FDirectiveUtilCsvRow*>(Row.Cells[KeyColumn], &Row));
+			FKeyedRow KeyedRow;
+			KeyedRow.SourceKey = SourceKey;
+			KeyedRow.Row = &Row;
+			OutRows.Add(LookupKey, MoveTemp(KeyedRow));
 		}
 		return true;
 	}
@@ -142,7 +185,9 @@ bool UDirectiveUtilCsvFunctionLibrary::ParseCsv(const FString& CsvText, const ED
 	FString CurrentCell;
 
 	const int32 Length = SourceText.Len();
-	int32 Index = 0;
+	constexpr TCHAR ByteOrderMark = 0xFEFF;
+	const int32 FirstIndex = Length > 0 && SourceText[0] == ByteOrderMark ? 1 : 0;
+	int32 Index = FirstIndex;
 
 	auto EndField = [&]()
 	{
@@ -192,7 +237,7 @@ bool UDirectiveUtilCsvFunctionLibrary::ParseCsv(const FString& CsvText, const ED
 					{
 						bLastActionEndedRow = true;
 					}
-						if (Character == TEXT('\r') && Index + 1 < Length && SourceText[Index + 1] == TEXT('\n'))
+					if (Character == TEXT('\r') && Index + 1 < Length && SourceText[Index + 1] == TEXT('\n'))
 					{
 						++Index;
 					}
@@ -275,6 +320,11 @@ bool UDirectiveUtilCsvFunctionLibrary::ParseCsv(const FString& CsvText, const ED
 				checkNoEntry();
 			}
 		}
+		if (Parsed.Rows.Num() > MaximumRowCount)
+		{
+			OutErrorMessage = FString::Printf(TEXT("The text holds more than %d rows."), MaximumRowCount);
+			return false;
+		}
 	}
 
 	if (State == ECsvFieldState::Quoted)
@@ -283,9 +333,14 @@ bool UDirectiveUtilCsvFunctionLibrary::ParseCsv(const FString& CsvText, const ED
 		return false;
 	}
 
-	if (Length > 0 && !bLastActionEndedRow)
+	if (Length > FirstIndex && !bLastActionEndedRow)
 	{
 		EndRow();
+	}
+	if (Parsed.Rows.Num() > MaximumRowCount)
+	{
+		OutErrorMessage = FString::Printf(TEXT("The text holds more than %d rows."), MaximumRowCount);
+		return false;
 	}
 
 	OutDocument = MoveTemp(Parsed);
@@ -498,7 +553,7 @@ bool UDirectiveUtilCsvFunctionLibrary::UpsertCsvRowByKey(FDirectiveUtilCsvDocume
 		}
 	}
 
-	TMap<FString, TPair<FString, const FDirectiveUtilCsvRow*>> ExistingRows;
+	FKeyedRowMap ExistingRows;
 	if (!BuildKeyedRows(Document, KeyHeaderCopy, bCaseSensitive, ExistingRows, OutErrorMessage))
 	{
 		return false;
@@ -652,8 +707,8 @@ bool UDirectiveUtilCsvFunctionLibrary::DiffCsvByKey(const FDirectiveUtilCsvDocum
 		return false;
 	}
 
-	TMap<FString, TPair<FString, const FDirectiveUtilCsvRow*>> BeforeRows;
-	TMap<FString, TPair<FString, const FDirectiveUtilCsvRow*>> AfterRows;
+	FKeyedRowMap BeforeRows;
+	FKeyedRowMap AfterRows;
 	if (!BuildKeyedRows(Before, KeyHeaderCopy, bCaseSensitive, BeforeRows, ErrorMessage)
 		|| !BuildKeyedRows(After, KeyHeaderCopy, bCaseSensitive, AfterRows, ErrorMessage))
 	{
@@ -662,41 +717,41 @@ bool UDirectiveUtilCsvFunctionLibrary::DiffCsvByKey(const FDirectiveUtilCsvDocum
 		return false;
 	}
 
-	for (const TPair<FString, TPair<FString, const FDirectiveUtilCsvRow*>>& Row : BeforeRows)
+	for (const TPair<FString, FKeyedRow>& Row : BeforeRows)
 	{
-		const TPair<FString, const FDirectiveUtilCsvRow*>* AfterRow = AfterRows.Find(Row.Key);
+		const FKeyedRow* AfterRow = AfterRows.Find(Row.Key);
 		if (AfterRow == nullptr)
 		{
-			Diff.RemovedKeys.Add(Row.Value.Key);
+			Diff.RemovedKeys.Add(Row.Value.SourceKey);
 		}
 		else
 		{
-			const TArray<FString>& BeforeCells = Row.Value.Value->Cells;
-			const TArray<FString>& AfterCells = AfterRow->Value->Cells;
+			const TArray<FString>& BeforeCells = Row.Value.Row->Cells;
+			const TArray<FString>& AfterCells = AfterRow->Row->Cells;
 			bool bChanged = BeforeCells.Num() != AfterCells.Num();
 			for (int32 ColumnIndex = 0; !bChanged && ColumnIndex < BeforeCells.Num(); ++ColumnIndex)
 			{
-				if (ColumnIndex != KeyColumn && BeforeCells[ColumnIndex] != AfterCells[ColumnIndex])
+				if (ColumnIndex != KeyColumn && !BeforeCells[ColumnIndex].Equals(AfterCells[ColumnIndex], ESearchCase::CaseSensitive))
 				{
 					bChanged = true;
 				}
 			}
 			if (bChanged)
 			{
-				Diff.ChangedKeys.Add(AfterRow->Key);
+				Diff.ChangedKeys.Add(AfterRow->SourceKey);
 			}
 		}
 	}
-	for (const TPair<FString, TPair<FString, const FDirectiveUtilCsvRow*>>& Row : AfterRows)
+	for (const TPair<FString, FKeyedRow>& Row : AfterRows)
 	{
 		if (!BeforeRows.Contains(Row.Key))
 		{
-			Diff.AddedKeys.Add(Row.Value.Key);
+			Diff.AddedKeys.Add(Row.Value.SourceKey);
 		}
 	}
-	Diff.AddedKeys.Sort();
-	Diff.RemovedKeys.Sort();
-	Diff.ChangedKeys.Sort();
+	Diff.AddedKeys.Sort(FSortedKeyLess());
+	Diff.RemovedKeys.Sort(FSortedKeyLess());
+	Diff.ChangedKeys.Sort(FSortedKeyLess());
 	OutDiff = MoveTemp(Diff);
 	OutErrorMessage.Reset();
 	return true;

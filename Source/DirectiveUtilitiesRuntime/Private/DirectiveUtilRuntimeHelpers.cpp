@@ -111,25 +111,24 @@ namespace DirectiveUtil
 		return FPaths::ConvertRelativePathToFull(FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir()), Path);
 	}
 
-	FDateTime UtcToLocal(const FDateTime& UtcTimestamp)
+	bool TryUtcToLocal(const FDateTime& UtcTimestamp, FDateTime& OutLocalDateTime)
 	{
 #if PLATFORM_WINDOWS
 		TIME_ZONE_INFORMATION TimeZone = {};
 		if (!GetTimeZoneForYear(UtcTimestamp.GetYear(), TimeZone))
 		{
-			return UtcTimestamp;
+			return false;
 		}
 
 		const SYSTEMTIME UtcSystemTime = ToSystemTime(UtcTimestamp);
 		SYSTEMTIME LocalSystemTime = {};
 		if (!SystemTimeToTzSpecificLocalTime(&TimeZone, &UtcSystemTime, &LocalSystemTime))
 		{
-			return UtcTimestamp;
+			return false;
 		}
 
-		FDateTime LocalDateTime;
 		const int64 SubMillisecondTicks = UtcTimestamp.GetTicks() % ETimespan::TicksPerMillisecond;
-		return FromSystemTime(LocalSystemTime, SubMillisecondTicks, LocalDateTime) ? LocalDateTime : UtcTimestamp;
+		return FromSystemTime(LocalSystemTime, SubMillisecondTicks, OutLocalDateTime);
 #else
 		// ToUnixTimestamp truncates toward zero, which rounds pre-1970 instants up a second and
 		// leaves the millisecond component describing a different second than the one converted.
@@ -146,37 +145,31 @@ namespace DirectiveUtil
 		tm LocalTm;
 		if (localtime_r(&Time, &LocalTm) == nullptr)
 		{
-			return UtcTimestamp;
+			return false;
 		}
 
-		FDateTime LocalDateTime;
-		if (!FromTm(LocalTm, RemainderTicks, LocalDateTime))
-		{
-			return UtcTimestamp;
-		}
-		return LocalDateTime;
+		return FromTm(LocalTm, RemainderTicks, OutLocalDateTime);
 #endif
 	}
 
-	FDateTime LocalToUtc(const FDateTime& LocalDateTime)
+	bool TryLocalToUtc(const FDateTime& LocalDateTime, FDateTime& OutUtcDateTime)
 	{
 #if PLATFORM_WINDOWS
 		TIME_ZONE_INFORMATION TimeZone = {};
 		if (!GetTimeZoneForYear(LocalDateTime.GetYear(), TimeZone))
 		{
-			return LocalDateTime;
+			return false;
 		}
 
 		const SYSTEMTIME LocalSystemTime = ToSystemTime(LocalDateTime);
 		SYSTEMTIME UtcSystemTime = {};
 		if (!TzSpecificLocalTimeToSystemTime(&TimeZone, &LocalSystemTime, &UtcSystemTime))
 		{
-			return LocalDateTime;
+			return false;
 		}
 
-		FDateTime UtcDateTime;
 		const int64 SubMillisecondTicks = LocalDateTime.GetTicks() % ETimespan::TicksPerMillisecond;
-		return FromSystemTime(UtcSystemTime, SubMillisecondTicks, UtcDateTime) ? UtcDateTime : LocalDateTime;
+		return FromSystemTime(UtcSystemTime, SubMillisecondTicks, OutUtcDateTime);
 #else
 		tm LocalTm = {};
 		LocalTm.tm_year = LocalDateTime.GetYear() - 1900;
@@ -191,16 +184,29 @@ namespace DirectiveUtil
 		const time_t Time = mktime(&LocalTm);
 		if (Time == static_cast<time_t>(-1) && errno != 0)
 		{
-			return LocalDateTime;
+			return false;
 		}
 
 		const int64 FractionTicks = LocalDateTime.GetTicks() % ETimespan::TicksPerSecond;
 		const FDateTime UtcDateTime = FDateTime::FromUnixTimestamp(static_cast<int64>(Time)) + FTimespan(FractionTicks);
 		if (UtcDateTime < FDateTime::MinValue() || UtcDateTime > FDateTime::MaxValue())
 		{
-			return LocalDateTime;
+			return false;
 		}
-		return UtcDateTime;
+		OutUtcDateTime = UtcDateTime;
+		return true;
 #endif
+	}
+
+	FDateTime UtcToLocal(const FDateTime& UtcTimestamp)
+	{
+		FDateTime LocalDateTime;
+		return TryUtcToLocal(UtcTimestamp, LocalDateTime) ? LocalDateTime : UtcTimestamp;
+	}
+
+	FDateTime LocalToUtc(const FDateTime& LocalDateTime)
+	{
+		FDateTime UtcDateTime;
+		return TryLocalToUtc(LocalDateTime, UtcDateTime) ? UtcDateTime : LocalDateTime;
 	}
 }

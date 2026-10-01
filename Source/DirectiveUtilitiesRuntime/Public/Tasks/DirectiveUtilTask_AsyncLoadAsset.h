@@ -49,6 +49,7 @@ public:
 	void Cancel();
 
 	virtual void Activate() override;
+	virtual void SetReadyToDestroy() override;
 
 	// Called when the asset has finished loading. The loaded asset is valid.
 	UPROPERTY(BlueprintAssignable)
@@ -101,6 +102,7 @@ public:
 	void Cancel();
 
 	virtual void Activate() override;
+	virtual void SetReadyToDestroy() override;
 
 	// Called when the class has finished loading. The loaded class is valid.
 	UPROPERTY(BlueprintAssignable)
@@ -156,6 +158,7 @@ public:
 	void Cancel();
 
 	virtual void Activate() override;
+	virtual void SetReadyToDestroy() override;
 
 	// Called exactly once when the batch has finished loading. The assets are in input order with null
 	// entries for references that were unset or failed to resolve, and are only guaranteed alive during

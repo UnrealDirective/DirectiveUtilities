@@ -2,16 +2,18 @@
 
 
 #include "Libraries/DirectiveUtilDataTableFunctionLibrary.h"
+
 #include "Libraries/DirectiveUtilCsvFunctionLibrary.h"
 #include "Engine/CompositeDataTable.h"
 #include "Engine/DataTable.h"
-#include "DataTableUtils.h"
 #include "Internationalization/Text.h"
-#include "Misc/OutputDeviceNull.h"
+#include "Misc/OutputDevice.h"
+#include "Misc/Parse.h"
 #include "StructUtils/UserDefinedStruct.h"
+#include "Templates/UniquePtr.h"
 #include "UObject/EnumProperty.h"
+#include "UObject/NameTypes.h"
 #include "UObject/Package.h"
-#include "UObject/ScriptInterface.h"
 #include "UObject/StructOnScope.h"
 #include "UObject/TextProperty.h"
 #include "UObject/UnrealType.h"
@@ -223,9 +225,31 @@ namespace
 		return true;
 	}
 
+	int32 GetDeclaredEnumCount(const UEnum* Enum)
+	{
+		const int32 Count = Enum->NumEnums();
+		if (Count == 0)
+		{
+			return 0;
+		}
+		// UHT and the Blueprint enum editor append a generated <Prefix>_MAX entry last; ContainsExistingMax recomputes the prefix and can miss it.
+		const FString LastName = Enum->GetNameStringByIndex(Count - 1);
+		const bool bLastIsGeneratedMax = Enum->ContainsExistingMax()
+			|| LastName.Equals(TEXT("MAX"), ESearchCase::CaseSensitive)
+			|| LastName.EndsWith(TEXT("_MAX"), ESearchCase::CaseSensitive);
+		return bLastIsGeneratedMax ? Count - 1 : Count;
+	}
+
+	int32 FindDeclaredEnumIndexByValue(const UEnum* Enum, const int64 Value)
+	{
+		const int32 Index = Enum->GetIndexByValue(Value);
+		return Index < GetDeclaredEnumCount(Enum) ? Index : INDEX_NONE;
+	}
+
 	bool FindEnumValueByString(const UEnum* Enum, const FString& SearchString, int64& OutValue)
 	{
-		for (int32 Index = 0; Index < Enum->NumEnums(); ++Index)
+		const int32 DeclaredCount = GetDeclaredEnumCount(Enum);
+		for (int32 Index = 0; Index < DeclaredCount; ++Index)
 		{
 			const FString FullName = Enum->GetNameByIndex(Index).ToString();
 			const FString PlainName = Enum->GetNameStringByIndex(Index);
@@ -262,7 +286,7 @@ namespace
 					*Trimmed, *Enum->GetName(), *PropertyName);
 				return false;
 			}
-			if (Enum->GetIndexByValue(Value) == INDEX_NONE)
+			if (FindDeclaredEnumIndexByValue(Enum, Value) == INDEX_NONE)
 			{
 				OutErrorMessage = FString::Printf(
 					TEXT("Row value %lld is outside the declared values of enumeration '%s' (property %s)."),
@@ -280,6 +304,288 @@ namespace
 		}
 
 		UnderlyingProperty->SetIntPropertyValue(ValuePtr, Value);
+		return true;
+	}
+
+	class FImportMessageCollector final : public FOutputDevice
+	{
+	public:
+		virtual void Serialize(const TCHAR* Message, ELogVerbosity::Type Verbosity, const FName& Category) override
+		{
+			if (FirstMessage.IsEmpty() && Message != nullptr)
+			{
+				FirstMessage = FString(Message).TrimStartAndEnd();
+			}
+			bHasMessages = true;
+		}
+
+		bool bHasMessages = false;
+		FString FirstMessage;
+	};
+
+	bool IsPropertyTextStruct(const UScriptStruct* Struct)
+	{
+		return (Struct->StructFlags & (STRUCT_ImportTextItemNative | STRUCT_ExportTextItemNative)) == 0;
+	}
+
+	TArray<FProperty*> GetStructProperties(const UStruct* Struct)
+	{
+		TArray<FProperty*> Properties;
+		for (TFieldIterator<FProperty> PropertyIterator(Struct); PropertyIterator; ++PropertyIterator)
+		{
+			Properties.Add(*PropertyIterator);
+		}
+		return Properties;
+	}
+
+	FProperty* FindHeaderProperty(const TArray<FProperty*>& Properties, const FString& HeaderName)
+	{
+		for (FProperty* Property : Properties)
+		{
+			// Blueprint Structure assets mangle GetName() to Field_2_<GUID>; the authored
+			// name is what an exported header row carries.
+			if (Property->GetName().Equals(HeaderName, ESearchCase::IgnoreCase)
+				|| Property->GetAuthoredName().Equals(HeaderName, ESearchCase::IgnoreCase))
+			{
+				return Property;
+			}
+		}
+		return nullptr;
+	}
+
+	struct FStructTextMember
+	{
+		FString Name;
+		FString Value;
+		bool bQuoted = false;
+	};
+
+	const TCHAR* SkipBlanks(const TCHAR* Cursor)
+	{
+		while (*Cursor == TEXT(' ') || *Cursor == TEXT('\t'))
+		{
+			++Cursor;
+		}
+		return Cursor;
+	}
+
+	bool ReadBareStructValue(const TCHAR*& Cursor, FString& OutValue)
+	{
+		const TCHAR* const Start = Cursor;
+		int32 Depth = 0;
+		bool bInQuotes = false;
+		while (*Cursor != TEXT('\0'))
+		{
+			const TCHAR Character = *Cursor;
+			if (bInQuotes)
+			{
+				if (Character == TEXT('\\') && Cursor[1] != TEXT('\0'))
+				{
+					++Cursor;
+				}
+				else if (Character == TEXT('"'))
+				{
+					bInQuotes = false;
+				}
+			}
+			else if (Character == TEXT('"'))
+			{
+				bInQuotes = true;
+			}
+			else if (Character == TEXT('('))
+			{
+				++Depth;
+			}
+			else if (Character == TEXT(')'))
+			{
+				if (Depth == 0)
+				{
+					break;
+				}
+				--Depth;
+			}
+			else if (Character == TEXT(',') && Depth == 0)
+			{
+				break;
+			}
+			++Cursor;
+		}
+		if (bInQuotes || Depth != 0)
+		{
+			return false;
+		}
+		OutValue = FString(FStringView(Start, static_cast<int32>(Cursor - Start))).TrimStartAndEnd();
+		return true;
+	}
+
+	bool SplitStructText(const FString& Text, TArray<FStructTextMember>& OutMembers, FString& OutProblem)
+	{
+		OutMembers.Reset();
+		const TCHAR* Cursor = SkipBlanks(*Text);
+		if (*Cursor != TEXT('('))
+		{
+			OutProblem = TEXT("it does not start with '('");
+			return false;
+		}
+		Cursor = SkipBlanks(Cursor + 1);
+		if (*Cursor == TEXT(')'))
+		{
+			++Cursor;
+		}
+		else
+		{
+			while (true)
+			{
+				const TCHAR* const NameStart = Cursor;
+				while (*Cursor != TEXT('\0') && *Cursor != TEXT('=') && *Cursor != TEXT(',')
+					&& *Cursor != TEXT('(') && *Cursor != TEXT(')') && *Cursor != TEXT('"'))
+				{
+					++Cursor;
+				}
+				FStructTextMember Member;
+				Member.Name = FString(FStringView(NameStart, static_cast<int32>(Cursor - NameStart))).TrimStartAndEnd();
+				if (*Cursor != TEXT('=') || Member.Name.IsEmpty())
+				{
+					OutProblem = TEXT("a member is not written as Name=Value");
+					return false;
+				}
+				Cursor = SkipBlanks(Cursor + 1);
+
+				if (*Cursor == TEXT('"'))
+				{
+					int32 QuotedLength = 0;
+					if (!FParse::QuotedString(Cursor, Member.Value, &QuotedLength))
+					{
+						OutProblem = FString::Printf(TEXT("member %s has an unterminated quoted value"), *Member.Name);
+						return false;
+					}
+					Cursor += QuotedLength;
+					Member.bQuoted = true;
+				}
+				else if (!ReadBareStructValue(Cursor, Member.Value))
+				{
+					OutProblem = FString::Printf(TEXT("member %s has unbalanced quotes or parentheses"), *Member.Name);
+					return false;
+				}
+				OutMembers.Add(MoveTemp(Member));
+
+				Cursor = SkipBlanks(Cursor);
+				if (*Cursor == TEXT(','))
+				{
+					Cursor = SkipBlanks(Cursor + 1);
+					continue;
+				}
+				if (*Cursor == TEXT(')'))
+				{
+					++Cursor;
+					break;
+				}
+				OutProblem = TEXT("a member value is not followed by ',' or ')'");
+				return false;
+			}
+		}
+
+		if (*SkipBlanks(Cursor) != TEXT('\0'))
+		{
+			OutProblem = TEXT("text follows the closing ')'");
+			return false;
+		}
+		return true;
+	}
+
+	bool ImportCellIntoProperty(const FString& Cell, FProperty* Property, void* RowData, const FString& PropertyName, FString& OutErrorMessage);
+
+	// Other engine text forms such as LOCTABLE can load string table assets, so only these macros are parsed.
+	bool StartsWithLocalizedTextMacro(const FString& Cell)
+	{
+		const TCHAR* Cursor = SkipBlanks(*Cell);
+		for (const TCHAR* Macro : { TEXT("NSLOCTEXT"), TEXT("LOCTEXT"), TEXT("INVTEXT") })
+		{
+			const int32 MacroLength = FCString::Strlen(Macro);
+			if (FCString::Strncmp(Cursor, Macro, MacroLength) == 0 && *SkipBlanks(Cursor + MacroLength) == TEXT('('))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	bool ImportStructText(const FString& Text, const UScriptStruct* Struct, void* StructData, const FString& PropertyName, FString& OutErrorMessage)
+	{
+		TArray<FStructTextMember> Members;
+		FString Problem;
+		if (!SplitStructText(Text, Members, Problem))
+		{
+			OutErrorMessage = FString::Printf(
+				TEXT("Row value '%s' for struct property %s (%s) is malformed because %s. Use engine text format such as (X=1.0,Y=2.0,Z=3.0)."),
+				*Text, *PropertyName, *Struct->GetName(), *Problem);
+			return false;
+		}
+
+		const TArray<FProperty*> Properties = GetStructProperties(Struct);
+		TSet<const FProperty*> AssignedProperties;
+		for (const FStructTextMember& Member : Members)
+		{
+			FProperty* Property = FindHeaderProperty(Properties, Member.Name);
+			if (Property == nullptr)
+			{
+				OutErrorMessage = FString::Printf(
+					TEXT("Struct property %s (%s) has no member named '%s'."),
+					*PropertyName, *Struct->GetName(), *Member.Name);
+				return false;
+			}
+			if (AssignedProperties.Contains(Property))
+			{
+				OutErrorMessage = FString::Printf(
+					TEXT("Struct property %s sets member %s more than once."),
+					*PropertyName, *Property->GetAuthoredName());
+				return false;
+			}
+			AssignedProperties.Add(Property);
+
+			const FString MemberName = PropertyName + TEXT(".") + Property->GetAuthoredName();
+			const FTextProperty* TextProperty = CastField<const FTextProperty>(Property);
+			if (TextProperty != nullptr && Member.bQuoted)
+			{
+				TextProperty->SetPropertyValue(Property->ContainerPtrToValuePtr<void>(StructData), FText::FromString(Member.Value));
+				continue;
+			}
+			if (!ImportCellIntoProperty(Member.Value, Property, StructData, MemberName, OutErrorMessage))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	bool ImportNativeStructText(const FString& Text, const UScriptStruct* Struct, void* StructData, const FString& PropertyName, FString& OutErrorMessage)
+	{
+		FImportMessageCollector Messages;
+		const TCHAR* EndCursor = *Text;
+		UScriptStruct::ICppStructOps* StructOps = (Struct->StructFlags & STRUCT_ImportTextItemNative) != 0
+			? Struct->GetCppStructOps()
+			: nullptr;
+		if (StructOps != nullptr)
+		{
+			// UScriptStruct::ImportText falls back to member-wise parsing when the native parser
+			// rejects the text, and that fallback ignores unknown members without a message.
+			if (!StructOps->ImportTextItem(EndCursor, StructData, PPF_ExternalEditor, nullptr, &Messages))
+			{
+				EndCursor = nullptr;
+			}
+		}
+		else
+		{
+			EndCursor = Struct->ImportText(*Text, StructData, nullptr, PPF_ExternalEditor, &Messages, Struct->GetName());
+		}
+		if (EndCursor == nullptr || *SkipBlanks(EndCursor) != TEXT('\0') || Messages.bHasMessages)
+		{
+			OutErrorMessage = FString::Printf(
+				TEXT("Row value '%s' is not valid text for struct property %s (%s)%s%s"),
+				*Text, *PropertyName, *Struct->GetName(),
+				Messages.FirstMessage.IsEmpty() ? TEXT(".") : TEXT(": "), *Messages.FirstMessage);
+			return false;
+		}
 		return true;
 	}
 
@@ -432,8 +738,10 @@ namespace
 			void* ValuePtr = Property->ContainerPtrToValuePtr<void>(RowData);
 
 			double Value = 0.0;
-			const double MaximumFloat = static_cast<double>(TNumericLimits<float>::Max());
-			if (!ParseDoubleCell(Cell, Value) || Value < -MaximumFloat || Value > MaximumFloat)
+			// Halfway between FLT_MAX and 2^128. Smaller magnitudes round to a finite float, including the
+			// shortest FLT_MAX text 3.4028235e+38, which is itself slightly above FLT_MAX.
+			constexpr double FloatOverflowThreshold = 3.4028235677973366e38;
+			if (!ParseDoubleCell(Cell, Value) || Value <= -FloatOverflowThreshold || Value >= FloatOverflowThreshold)
 			{
 				OutErrorMessage = FString::Printf(TEXT("Row value '%s' is not a finite float for property %s."), *Cell, *PropertyName);
 				return false;
@@ -480,13 +788,14 @@ namespace
 		{
 			void* ValuePtr = Property->ContainerPtrToValuePtr<void>(RowData);
 
+			if (!StartsWithLocalizedTextMacro(Cell))
+			{
+				TextProperty->SetPropertyValue(ValuePtr, FText::FromString(Cell));
+				return true;
+			}
 			FText Value;
 			const TCHAR* EndCursor = FTextStringHelper::ReadFromBuffer(*Cell, Value);
-			while (EndCursor != nullptr && (*EndCursor == TEXT(' ') || *EndCursor == TEXT('\t')))
-			{
-				++EndCursor;
-			}
-			if (EndCursor == nullptr || *EndCursor != TEXT('\0'))
+			if (EndCursor == nullptr || *SkipBlanks(EndCursor) != TEXT('\0'))
 			{
 				OutErrorMessage = FString::Printf(TEXT("Row value for text property %s is malformed."), *PropertyName);
 				return false;
@@ -505,35 +814,22 @@ namespace
 			}
 
 			const FString Trimmed = Cell.TrimStartAndEnd();
-
-			void* ValuePtr = Property->ContainerPtrToValuePtr<void>(RowData);
-			auto TryImport = [&](const FString& Source)
+			FStructOnScope ImportedValue(Struct);
+			bool bImported = false;
+			if (IsPropertyTextStruct(Struct))
 			{
-				FStructOnScope ImportedValue(Struct);
-				FOutputDeviceNull ErrorCollector;
-				const TCHAR* EndCursor = Struct->ImportText(
-					*Source, ImportedValue.GetStructMemory(), nullptr, PPF_ExternalEditor, &ErrorCollector, Struct->GetName());
-				while (EndCursor != nullptr && (*EndCursor == TEXT(' ') || *EndCursor == TEXT('\t')))
-				{
-					++EndCursor;
-				}
-				if (EndCursor == nullptr || *EndCursor != TEXT('\0'))
-				{
-					return false;
-				}
-				Struct->CopyScriptStruct(ValuePtr, ImportedValue.GetStructMemory());
-				return true;
-			};
-
-			const bool bImported = TryImport(Trimmed)
-				|| (!Trimmed.StartsWith(TEXT("(")) && TryImport(FString(TEXT("(")) + Trimmed + TEXT(")")));
+				const FString StructText = Trimmed.StartsWith(TEXT("(")) ? Trimmed : FString(TEXT("(")) + Trimmed + TEXT(")");
+				bImported = ImportStructText(StructText, Struct, ImportedValue.GetStructMemory(), PropertyName, OutErrorMessage);
+			}
+			else
+			{
+				bImported = ImportNativeStructText(Trimmed, Struct, ImportedValue.GetStructMemory(), PropertyName, OutErrorMessage);
+			}
 			if (!bImported)
 			{
-				OutErrorMessage = FString::Printf(
-					TEXT("Row value '%s' is not valid engine text format for struct property %s (%s), such as (X=1.0,Y=2.0,Z=3.0)."),
-					*Cell, *PropertyName, *Struct->GetName());
 				return false;
 			}
+			Struct->CopyScriptStruct(Property->ContainerPtrToValuePtr<void>(RowData), ImportedValue.GetStructMemory());
 			return true;
 		}
 
@@ -545,7 +841,7 @@ namespace
 
 	bool ExportEnumToCell(const UEnum* Enum, const int64 Value, const FString& PropertyName, FString& OutCell, FString& OutErrorMessage)
 	{
-		const int32 EnumIndex = Enum->GetIndexByValue(Value);
+		const int32 EnumIndex = FindDeclaredEnumIndexByValue(Enum, Value);
 		if (EnumIndex == INDEX_NONE)
 		{
 			OutErrorMessage = FString::Printf(
@@ -560,6 +856,37 @@ namespace
 		}
 		OutCell = MoveTemp(Name);
 		return true;
+	}
+
+	FString FormatFloatingPointCell(const double Value, const bool bSinglePrecision)
+	{
+		constexpr int32 MaximumSignificantDigits = 17;
+		FString Shortest;
+		for (int32 Digits = 1; Digits <= MaximumSignificantDigits; ++Digits)
+		{
+			Shortest = FString::Printf(TEXT("%.*g"), Digits, Value);
+			const double Parsed = FCString::Atod(*Shortest);
+			const bool bRoundTrips = bSinglePrecision
+				? static_cast<float>(Parsed) == static_cast<float>(Value)
+				: Parsed == Value;
+			if (bRoundTrips)
+			{
+				break;
+			}
+		}
+
+		const int32 ExponentIndex = Shortest.Find(TEXT("e"), ESearchCase::IgnoreCase);
+		if (ExponentIndex == INDEX_NONE)
+		{
+			return Shortest;
+		}
+		// %g switches to an exponent once a whole number has more digits than it needs; %.0f writes the same exact value in fixed form.
+		const int32 Exponent = FCString::Atoi(*Shortest + ExponentIndex + 1);
+		if (Exponent >= 0 && Exponent < (bSinglePrecision ? 9 : MaximumSignificantDigits))
+		{
+			return FString::Printf(TEXT("%.0f"), Value);
+		}
+		return Shortest;
 	}
 
 	bool IsSupportedValueProperty(const FProperty* Property)
@@ -597,6 +924,15 @@ namespace
 			return false;
 		}
 
+		// Structs such as FInstancedStruct hold references outside reflection, and their text import can load assets.
+		if ((StructProperty->Struct->StructFlags & STRUCT_AddStructReferencedObjects) != 0)
+		{
+			OutErrorMessage = FString::Printf(
+				TEXT("Property %s uses struct %s, which can hold object references. Runtime CSV supports value-only structs."),
+				*PropertyPath, *StructProperty->Struct->GetName());
+			return false;
+		}
+
 		if (VisitingStructs.Contains(StructProperty->Struct))
 		{
 			OutErrorMessage = FString::Printf(TEXT("Property %s contains a recursive struct definition."), *PropertyPath);
@@ -624,7 +960,71 @@ namespace
 		return ValidateSupportedProperty(Property, Property->GetAuthoredName(), VisitingStructs, OutErrorMessage);
 	}
 
-	bool ExportPropertyToCell(const FProperty* Property, void* RowData, const FString& PropertyName, FString& OutCell, FString& OutErrorMessage)
+	bool ExportPropertyToCell(const FProperty* Property, const void* RowData, const FString& PropertyName, FString& OutCell, FString& OutErrorMessage);
+
+	bool IsBareStructMemberValue(const FProperty* Property)
+	{
+		if (CastField<const FBoolProperty>(Property))
+		{
+			return true;
+		}
+		const FByteProperty* ByteProperty = CastField<const FByteProperty>(Property);
+		return CastField<const FNumericProperty>(Property) && (ByteProperty == nullptr || ByteProperty->Enum == nullptr);
+	}
+
+	bool ExportStructValueText(const UScriptStruct* Struct, const void* StructData, const FString& PropertyName, FString& OutText, FString& OutErrorMessage)
+	{
+		if (!IsPropertyTextStruct(Struct))
+		{
+			FString Formatted;
+			// Passing the value as its own defaults forces every member out; a null Defaults
+			// makes ExportText skip members that compare equal to a zeroed struct.
+			Struct->ExportText(Formatted, StructData, /*Defaults*/ StructData, /*OwnerObject*/ nullptr, PPF_ExternalEditor, /*ExportRootScope*/ nullptr);
+			OutText = MoveTemp(Formatted);
+			return true;
+		}
+
+		FString Text(TEXT("("));
+		bool bFirstMember = true;
+		for (TFieldIterator<FProperty> PropertyIterator(Struct); PropertyIterator; ++PropertyIterator)
+		{
+			const FProperty* Member = *PropertyIterator;
+			const FString MemberName = PropertyName + TEXT(".") + Member->GetAuthoredName();
+			FString Value;
+			if (const FStructProperty* MemberStruct = CastField<const FStructProperty>(Member))
+			{
+				if (!ExportStructValueText(MemberStruct->Struct, Member->ContainerPtrToValuePtr<void>(StructData), MemberName, Value, OutErrorMessage))
+				{
+					return false;
+				}
+			}
+			else
+			{
+				if (!ExportPropertyToCell(Member, StructData, MemberName, Value, OutErrorMessage))
+				{
+					return false;
+				}
+				if (!IsBareStructMemberValue(Member))
+				{
+					Value = FString(TEXT("\"")) + Value.ReplaceCharWithEscapedChar() + TEXT("\"");
+				}
+			}
+
+			if (!bFirstMember)
+			{
+				Text += TEXT(',');
+			}
+			bFirstMember = false;
+			Text += Member->GetAuthoredName();
+			Text += TEXT('=');
+			Text += Value;
+		}
+		Text += TEXT(')');
+		OutText = MoveTemp(Text);
+		return true;
+	}
+
+	bool ExportPropertyToCell(const FProperty* Property, const void* RowData, const FString& PropertyName, FString& OutCell, FString& OutErrorMessage)
 	{
 		if (const FBoolProperty* BoolProperty = CastField<const FBoolProperty>(Property))
 		{
@@ -660,7 +1060,7 @@ namespace
 					OutErrorMessage = FString::Printf(TEXT("Property %s holds a non-finite number."), *PropertyName);
 					return false;
 				}
-				OutCell = LexToString(Value);
+				OutCell = FormatFloatingPointCell(Value, CastField<const FFloatProperty>(Property) != nullptr);
 			}
 			else if (CastField<const FUInt64Property>(Property))
 			{
@@ -688,40 +1088,19 @@ namespace
 
 		if (const FTextProperty* TextProperty = CastField<const FTextProperty>(Property))
 		{
-			FTextStringHelper::WriteToBuffer(
-				OutCell, TextProperty->GetPropertyValue(Property->ContainerPtrToValuePtr<void>(RowData)));
+			OutCell = TextProperty->GetPropertyValue(Property->ContainerPtrToValuePtr<void>(RowData)).ToString();
 			return true;
 		}
 
 		if (const FStructProperty* StructProperty = CastField<const FStructProperty>(Property))
 		{
-			const void* ValuePtr = Property->ContainerPtrToValuePtr<void>(RowData);
-			FString Formatted;
-			// Passing the value as its own defaults forces every member out; a null Defaults
-			// makes ExportText skip members that compare equal to a zeroed struct.
-			StructProperty->Struct->ExportText(Formatted, ValuePtr, /*Defaults*/ ValuePtr, /*OwnerObject*/ nullptr, PPF_ExternalEditor, /*ExportRootScope*/ nullptr);
-			OutCell = MoveTemp(Formatted);
-			return true;
+			return ExportStructValueText(StructProperty->Struct, Property->ContainerPtrToValuePtr<void>(RowData), PropertyName, OutCell, OutErrorMessage);
 		}
 
 		OutErrorMessage = FString::Printf(
 			TEXT("Property %s has unsupported type %s. Runtime CSV export supports Boolean, numeric, enumeration, string, name, text, and struct properties."),
 			*PropertyName, *Property->GetClass()->GetName());
 		return false;
-	}
-	FProperty* FindHeaderProperty(const TArray<FProperty*>& Properties, const FString& HeaderName)
-	{
-		for (FProperty* Property : Properties)
-		{
-			// Blueprint Structure assets mangle GetName() to Field_2_<GUID>; the authored
-			// name is what an exported header row carries.
-			if (Property->GetName().Equals(HeaderName, ESearchCase::IgnoreCase)
-				|| Property->GetAuthoredName().Equals(HeaderName, ESearchCase::IgnoreCase))
-			{
-				return Property;
-			}
-		}
-		return nullptr;
 	}
 
 	bool BuildRowFromCells(
@@ -751,7 +1130,7 @@ namespace
 
 	bool MakeRowKey(const FString& Cell, const FString& RowDescription, FName& OutRowKey, FString& OutErrorMessage)
 	{
-		FString KeyText = Cell.TrimStartAndEnd();
+		const FString KeyText = Cell.TrimStartAndEnd();
 		if (KeyText.IsEmpty())
 		{
 			OutErrorMessage = FString::Printf(TEXT("%s has an empty Name cell."), *RowDescription);
@@ -762,8 +1141,18 @@ namespace
 			OutErrorMessage = FString::Printf(TEXT("%s has a row name that is too long or contains a null character."), *RowDescription);
 			return false;
 		}
+		for (const TCHAR Character : KeyText)
+		{
+			if (FCString::Strchr(INVALID_NAME_CHARACTERS, Character) != nullptr)
+			{
+				OutErrorMessage = FString::Printf(
+					TEXT("%s has the row name '%s'. Row names cannot contain spaces, commas, quotes, apostrophes, tabs, or line breaks."),
+					*RowDescription, *KeyText);
+				return false;
+			}
+		}
 
-		OutRowKey = DataTableUtils::MakeValidName(KeyText);
+		OutRowKey = FName(*KeyText);
 		if (OutRowKey.IsNone())
 		{
 			OutErrorMessage = FString::Printf(TEXT("%s has a row name that resolves to None."), *RowDescription);
@@ -772,15 +1161,21 @@ namespace
 		return true;
 	}
 
-	bool BuildCanonicalCsv(
-		UScriptStruct* RowStruct,
+	struct FParsedRow
+	{
+		FName RowName;
+		TUniquePtr<FStructOnScope> RowData;
+	};
+
+	bool ParseRows(
+		const UScriptStruct* RowStruct,
 		const FString& CsvText,
 		const EDirectiveUtilCsvDelimiter Delimiter,
 		const bool bHasHeaderRow,
-		FString& OutCanonicalCsv,
-		FString& OutKeyHeader,
+		TArray<FParsedRow>& OutRows,
 		FString& OutErrorMessage)
 	{
+		OutRows.Reset();
 		if (CsvText.Len() != FCString::Strlen(*CsvText))
 		{
 			OutErrorMessage = TEXT("DataTable CSV text cannot contain null characters.");
@@ -798,11 +1193,7 @@ namespace
 			return false;
 		}
 
-		TArray<FProperty*> Properties;
-		for (TFieldIterator<FProperty> PropertyIterator(RowStruct); PropertyIterator; ++PropertyIterator)
-		{
-			Properties.Add(*PropertyIterator);
-		}
+		const TArray<FProperty*> Properties = GetStructProperties(RowStruct);
 		for (const FProperty* Property : Properties)
 		{
 			if (!ValidateSupportedProperty(Property, OutErrorMessage))
@@ -850,6 +1241,11 @@ namespace
 				BoundProperties.Add(BoundProperty);
 				ColumnBindings.Add(TPair<int32, FProperty*>(ColumnIndex, BoundProperty));
 			}
+			if (RowNameColumn == INDEX_NONE)
+			{
+				OutErrorMessage = TEXT("The header row has no Name column. Add a Name column that holds each row key, or import without a header row.");
+				return false;
+			}
 		}
 		else
 		{
@@ -859,29 +1255,11 @@ namespace
 			}
 		}
 
-		OutKeyHeader = TEXT("__DirectiveRowKey");
-		while (Properties.ContainsByPredicate([&](const FProperty* Property)
-		{
-			return Property->GetName().Equals(OutKeyHeader, ESearchCase::IgnoreCase);
-		}))
-		{
-			OutKeyHeader += TEXT('_');
-		}
-
-		FDirectiveUtilCsvDocument CanonicalDocument;
-		CanonicalDocument.Delimiter = EDirectiveUtilCsvDelimiter::Comma;
-		FDirectiveUtilCsvRow CanonicalHeader;
-		CanonicalHeader.Cells.Reserve(Properties.Num() + 1);
-		CanonicalHeader.Cells.Add(OutKeyHeader);
-		for (const FProperty* Property : Properties)
-		{
-			CanonicalHeader.Cells.Add(Property->GetName());
-		}
-		CanonicalDocument.Rows.Add(MoveTemp(CanonicalHeader));
-
 		const int32 FirstDataRow = bHasHeaderRow ? 1 : 0;
 		const int32 HeaderWidth = bHasHeaderRow ? Document.Rows[0].Cells.Num() : 0;
 		TSet<FName> UsedRowNames;
+		TArray<FParsedRow> Rows;
+		Rows.Reserve(Document.Rows.Num() - FirstDataRow);
 		for (int32 RowIndex = FirstDataRow; RowIndex < Document.Rows.Num(); ++RowIndex)
 		{
 			const TArray<FString>& Cells = Document.Rows[RowIndex].Cells;
@@ -921,60 +1299,56 @@ namespace
 			}
 			UsedRowNames.Add(RowKey);
 
-			FStructOnScope RowData(RowStruct);
-			if (!BuildRowFromCells(Cells, ColumnBindings, RowData.GetStructMemory(), RowDescription, OutErrorMessage))
+			FParsedRow Row;
+			Row.RowName = RowKey;
+			Row.RowData = MakeUnique<FStructOnScope>(RowStruct);
+			if (!BuildRowFromCells(Cells, ColumnBindings, Row.RowData->GetStructMemory(), RowDescription, OutErrorMessage))
 			{
 				return false;
 			}
-
-			FDirectiveUtilCsvRow CanonicalRow;
-			CanonicalRow.Cells.Reserve(Properties.Num() + 1);
-			CanonicalRow.Cells.Add(RowKey.ToString());
-			for (FProperty* Property : Properties)
-			{
-				FString Cell;
-				if (!ExportPropertyToCell(
-					Property, RowData.GetStructMemory(), Property->GetAuthoredName(), Cell, OutErrorMessage))
-				{
-					OutErrorMessage = FString::Printf(TEXT("%s: %s"), *RowDescription, *OutErrorMessage);
-					return false;
-				}
-				CanonicalRow.Cells.Add(MoveTemp(Cell));
-			}
-			CanonicalDocument.Rows.Add(MoveTemp(CanonicalRow));
+			Rows.Add(MoveTemp(Row));
 		}
 
-		UDirectiveUtilCsvFunctionLibrary::WriteCsv(CanonicalDocument, OutCanonicalCsv);
+		OutRows = MoveTemp(Rows);
 		return true;
 	}
 
-	bool ImportCanonicalCsv(
-		UDataTable* Table,
-		const FString& CanonicalCsv,
-		const FString& KeyHeader,
-		FString& OutErrorMessage)
+	bool RunRowImportCallbacks(const UDataTable* Table, const UScriptStruct* RowStruct, TArray<FParsedRow>& Rows, FString& OutErrorMessage)
 	{
-		const bool bOriginalIgnoreExtraFields = Table->bIgnoreExtraFields;
-		const bool bOriginalIgnoreMissingFields = Table->bIgnoreMissingFields;
-		const bool bOriginalPreserveExistingValues = Table->bPreserveExistingValues;
-		const FString OriginalImportKeyField = Table->ImportKeyField;
+		if (!RowStruct->IsChildOf(FTableRowBase::StaticStruct()))
+		{
+			return true;
+		}
 
-		Table->bIgnoreExtraFields = false;
-		Table->bIgnoreMissingFields = false;
-		Table->bPreserveExistingValues = false;
-		Table->ImportKeyField = KeyHeader;
-		const TArray<FString> Problems = Table->CreateTableFromCSVString(CanonicalCsv);
-		Table->bIgnoreExtraFields = bOriginalIgnoreExtraFields;
-		Table->bIgnoreMissingFields = bOriginalIgnoreMissingFields;
-		Table->bPreserveExistingValues = bOriginalPreserveExistingValues;
-		Table->ImportKeyField = OriginalImportKeyField;
-
+		TArray<FString> Problems;
+		for (FParsedRow& Row : Rows)
+		{
+			FTableRowBase* TableRow = reinterpret_cast<FTableRowBase*>(Row.RowData->GetStructMemory());
+			TableRow->OnPostDataImport(Table, Row.RowName, Problems);
+		}
 		if (!Problems.IsEmpty())
 		{
 			OutErrorMessage = FString::Join(Problems, TEXT("\n"));
 			return false;
 		}
-		OutErrorMessage.Reset();
+		return true;
+	}
+
+	bool InstallRows(UDataTable* Table, UScriptStruct* RowStruct, const TArray<FParsedRow>& Rows, FString& OutErrorMessage)
+	{
+		TMap<FName, const uint8*> RowDataByName;
+		RowDataByName.Reserve(Rows.Num());
+		for (const FParsedRow& Row : Rows)
+		{
+			RowDataByName.Add(Row.RowName, Row.RowData->GetStructMemory());
+		}
+
+		const TArray<FString> Problems = Table->CreateTableFromRawData(RowDataByName, RowStruct);
+		if (!Problems.IsEmpty())
+		{
+			OutErrorMessage = FString::Join(Problems, TEXT("\n"));
+			return false;
+		}
 		return true;
 	}
 }
@@ -993,17 +1367,20 @@ UDataTable* UDirectiveUtilDataTableFunctionLibrary::CreateDataTableFromCsv(
 		return nullptr;
 	}
 
-	FString CanonicalCsv;
-	FString KeyHeader;
-	if (!BuildCanonicalCsv(
-		RowStruct, CsvTextCopy, Delimiter, bHasHeaderRow, CanonicalCsv, KeyHeader, OutErrorMessage))
+	TArray<FParsedRow> Rows;
+	if (!ParseRows(RowStruct, CsvTextCopy, Delimiter, bHasHeaderRow, Rows, OutErrorMessage))
 	{
 		return nullptr;
 	}
 
 	UDataTable* Table = NewObject<UDataTable>(GetTransientPackage(), NAME_None, RF_Transient);
 	Table->RowStruct = RowStruct;
-	return ImportCanonicalCsv(Table, CanonicalCsv, KeyHeader, OutErrorMessage) ? Table : nullptr;
+	if (!RunRowImportCallbacks(Table, RowStruct, Rows, OutErrorMessage)
+		|| !InstallRows(Table, RowStruct, Rows, OutErrorMessage))
+	{
+		return nullptr;
+	}
+	return Table;
 }
 
 bool UDirectiveUtilDataTableFunctionLibrary::ExportDataTableToCsv(
@@ -1037,13 +1414,7 @@ bool UDirectiveUtilDataTableFunctionLibrary::ExportDataTableToCsv(
 	}
 
 	const UScriptStruct* RowStruct = Table->GetRowStruct();
-
-	TArray<FProperty*> Properties;
-	for (TFieldIterator<FProperty> PropertyIterator(RowStruct); PropertyIterator; ++PropertyIterator)
-	{
-		Properties.Add(*PropertyIterator);
-	}
-
+	const TArray<FProperty*> Properties = GetStructProperties(RowStruct);
 	for (const FProperty* Property : Properties)
 	{
 		if (!ValidateSupportedProperty(Property, OutErrorMessage))
@@ -1096,10 +1467,10 @@ bool UDirectiveUtilDataTableFunctionLibrary::ExportDataTableToCsv(
 		{
 			Row.Cells.Add(RowName.ToString());
 		}
-		for (int32 PropertyIndex = 0; PropertyIndex < Properties.Num(); ++PropertyIndex)
+		for (const FProperty* Property : Properties)
 		{
 			FString Cell;
-			if (!ExportPropertyToCell(Properties[PropertyIndex], const_cast<uint8*>(RowData), Properties[PropertyIndex]->GetAuthoredName(), Cell, OutErrorMessage))
+			if (!ExportPropertyToCell(Property, RowData, Property->GetAuthoredName(), Cell, OutErrorMessage))
 			{
 				OutErrorMessage = FString::Printf(TEXT("Row '%s': %s"), *RowName.ToString(), *OutErrorMessage);
 				return false;
@@ -1139,36 +1510,11 @@ bool UDirectiveUtilDataTableFunctionLibrary::ReplaceDataTableFromCsv(
 		return false;
 	}
 
-	FString CanonicalCsv;
-	FString KeyHeader;
-	if (!BuildCanonicalCsv(
-		Table->RowStruct, CsvTextCopy, Delimiter, bHasHeaderRow, CanonicalCsv, KeyHeader, OutErrorMessage))
-	{
-		return false;
-	}
-
-	UDataTable* Snapshot = NewObject<UDataTable>(GetTransientPackage(), NAME_None, RF_Transient);
-	const TArray<FString> SnapshotProblems = Snapshot->CreateTableFromOtherTable(Table);
-	if (!SnapshotProblems.IsEmpty())
-	{
-		OutErrorMessage = FString::Join(SnapshotProblems, TEXT("\n"));
-		return false;
-	}
-
-	FString ImportError;
-	if (ImportCanonicalCsv(Table, CanonicalCsv, KeyHeader, ImportError))
-	{
-		return true;
-	}
-
-	const TArray<FString> RestoreProblems = Table->CreateTableFromOtherTable(Snapshot);
-	OutErrorMessage = ImportError;
-	if (!RestoreProblems.IsEmpty())
-	{
-		OutErrorMessage += TEXT("\nThe original table could not be restored: ");
-		OutErrorMessage += FString::Join(RestoreProblems, TEXT("\n"));
-	}
-	return false;
+	UScriptStruct* RowStruct = Table->RowStruct.Get();
+	TArray<FParsedRow> Rows;
+	return ParseRows(RowStruct, CsvTextCopy, Delimiter, bHasHeaderRow, Rows, OutErrorMessage)
+		&& RunRowImportCallbacks(Table, RowStruct, Rows, OutErrorMessage)
+		&& InstallRows(Table, RowStruct, Rows, OutErrorMessage);
 }
 
 bool UDirectiveUtilDataTableFunctionLibrary::DiffDataTables(

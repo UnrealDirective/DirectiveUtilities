@@ -99,6 +99,66 @@ bool FDirectiveUtilBytesFunctionLibraryTest::RunTest(const FString& Parameters)
 		UDirectiveUtilBytesFunctionLibrary::HmacSha256Hex(Empty, Empty),
 		FString(TEXT("b613679a0814d9ec772f95d778c35fc5ff1697c493715653c6c712144292c5ad")));
 
+	TArray<uint8> BlockSizedKey;
+	for (int32 Index = 0; Index < 64; ++Index)
+	{
+		BlockSizedKey.Add(static_cast<uint8>(Index));
+	}
+	const TArray<uint8> ReferenceMessage = {
+		'H', 'e', 'l', 'l', 'o', ',', ' ', 'D', 'i', 'r', 'e', 'c', 't', 'i', 'v', 'e', ' ',
+		'U', 't', 'i', 'l', 'i', 't', 'i', 'e', 's', '!' };
+	// Computed with Python's hmac module; a 64-byte key fills the block exactly and is used without hashing.
+	TestEqual(TEXT("HMAC-SHA256 matches a reference digest for a block-sized key"),
+		UDirectiveUtilBytesFunctionLibrary::HmacSha256Hex(ReferenceMessage, BlockSizedKey),
+		FString(TEXT("5ff68dcabfbacd294703358e475843f1b5e5840814955ef13009ef1c30f3079d")));
+
+	// Produced by Python's zlib.compress and gzip.compress(mtime=0) at level 9 from ReferenceMessage.
+	const TArray<uint8> ExternalZlib = {
+		0x78, 0xda, 0xf3, 0x48, 0xcd, 0xc9, 0xc9, 0xd7, 0x51, 0x70, 0xc9, 0x2c, 0x4a, 0x4d, 0x2e, 0xc9,
+		0x2c, 0x4b, 0x55, 0x08, 0x2d, 0xc9, 0xcc, 0xc9, 0x2c, 0xc9, 0x4c, 0x2d, 0x56, 0x04, 0x00, 0x87,
+		0xe0, 0x09, 0xdd };
+	const TArray<uint8> ExternalGzip = {
+		0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xf3, 0x48, 0xcd, 0xc9, 0xc9, 0xd7,
+		0x51, 0x70, 0xc9, 0x2c, 0x4a, 0x4d, 0x2e, 0xc9, 0x2c, 0x4b, 0x55, 0x08, 0x2d, 0xc9, 0xcc, 0xc9,
+		0x2c, 0xc9, 0x4c, 0x2d, 0x56, 0x04, 0x00, 0x49, 0xb6, 0xa0, 0xcd, 0x1b, 0x00, 0x00, 0x00 };
+	TArray<uint8> ExternalOutput;
+	TestTrue(TEXT("An externally produced zlib stream decompresses"),
+		UDirectiveUtilBytesFunctionLibrary::DecompressBytes(
+			ExternalZlib, ReferenceMessage.Num(), EDirectiveUtilCompressionFormat::Zlib, ExternalOutput));
+	TestEqual(TEXT("The external zlib stream restores the reference bytes"), ExternalOutput, ReferenceMessage);
+	TestTrue(TEXT("An externally produced gzip stream decompresses"),
+		UDirectiveUtilBytesFunctionLibrary::DecompressBytes(
+			ExternalGzip, ReferenceMessage.Num(), EDirectiveUtilCompressionFormat::Gzip, ExternalOutput));
+	TestEqual(TEXT("The external gzip stream restores the reference bytes"), ExternalOutput, ReferenceMessage);
+	TestFalse(TEXT("A zlib stream decoded as gzip fails"),
+		UDirectiveUtilBytesFunctionLibrary::DecompressBytes(
+			ExternalZlib, ReferenceMessage.Num(), EDirectiveUtilCompressionFormat::Gzip, ExternalOutput));
+	TestEqual(TEXT("A format mismatch leaves no output"), ExternalOutput.Num(), 0);
+	TestFalse(TEXT("A gzip stream decoded as zlib fails"),
+		UDirectiveUtilBytesFunctionLibrary::DecompressBytes(
+			ExternalGzip, ReferenceMessage.Num(), EDirectiveUtilCompressionFormat::Zlib, ExternalOutput));
+	TestFalse(TEXT("An expected size smaller than the stream output fails"),
+		UDirectiveUtilBytesFunctionLibrary::DecompressBytes(
+			ExternalGzip, ReferenceMessage.Num() - 1, EDirectiveUtilCompressionFormat::Gzip, ExternalOutput));
+	TestEqual(TEXT("A short expected size leaves no output"), ExternalOutput.Num(), 0);
+	TArray<uint8> CorruptCrcGzip = ExternalGzip;
+	CorruptCrcGzip[CorruptCrcGzip.Num() - 8] ^= 0x01;
+	TestFalse(TEXT("A gzip trailer with a wrong CRC fails"),
+		UDirectiveUtilBytesFunctionLibrary::DecompressBytes(
+			CorruptCrcGzip, ReferenceMessage.Num(), EDirectiveUtilCompressionFormat::Gzip, ExternalOutput));
+	TestEqual(TEXT("A CRC failure leaves no output"), ExternalOutput.Num(), 0);
+	TArray<uint8> CorruptAdlerZlib = ExternalZlib;
+	CorruptAdlerZlib.Last() ^= 0x01;
+	TestFalse(TEXT("A zlib trailer with a wrong Adler-32 fails"),
+		UDirectiveUtilBytesFunctionLibrary::DecompressBytes(
+			CorruptAdlerZlib, ReferenceMessage.Num(), EDirectiveUtilCompressionFormat::Zlib, ExternalOutput));
+
+	TArray<uint8> OwnGzip;
+	TestTrue(TEXT("Gzip compression succeeds for the reference bytes"),
+		UDirectiveUtilBytesFunctionLibrary::CompressBytes(ReferenceMessage, EDirectiveUtilCompressionFormat::Gzip, OwnGzip));
+	TestTrue(TEXT("Gzip output starts with the gzip magic bytes and deflate method"),
+		OwnGzip.Num() >= 18 && OwnGzip[0] == 0x1f && OwnGzip[1] == 0x8b && OwnGzip[2] == 0x08);
+
 	const FString RepetitiveText = TEXT("Directive Utilities Directive Utilities Directive Utilities Directive Utilities");
 	TArray<uint8> RepetitiveBytes;
 	for (const TCHAR Character : RepetitiveText)

@@ -17,7 +17,7 @@ Tests\RuntimeHost\Scripts\run-windows.ps1 "C:\Program Files\Epic Games\UE_5.8"
 ```
 
 The runners impose a 30-minute timeout on each Editor or packaged-game test
-process and require exactly 60 successful tests in the editor host and 41
+process and require exactly 61 successful tests in the editor host and 42
 runtime-safe tests in packaged Development. A non-zero process exit, missing
 report, changed test census, duplicate
 test path, warning, skipped test, or missing completion marker fails the run.

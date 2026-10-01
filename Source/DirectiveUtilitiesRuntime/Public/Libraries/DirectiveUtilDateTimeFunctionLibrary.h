@@ -22,10 +22,12 @@
  * | ss    | Two-digit second | 03 |
  * | fff   | Three-digit millisecond | 412 |
  *
- * Characters that are not token letters and not wrapped in single quotes are emitted verbatim.
- * Wrap token characters in single quotes to emit them literally, such as `yyyy-MM-dd'T'HH:mm`;
- * two consecutive quotes emit one quote character. Any other run of token letters is an error
- * for both formatting and parsing.
+ * Digits, punctuation, spaces, and non-ASCII characters outside single quotes are emitted
+ * verbatim. Any unquoted ASCII letter that is not part of a token above is an error for both
+ * formatting and parsing, so `YYYY-MM-DD` fails instead of printing its letters. A run of token
+ * letters with the wrong length, such as `mmm`, is also an error. Wrap letters in single quotes
+ * to emit them literally, such as `yyyy-MM-dd'T'HH:mm`; two consecutive quotes emit one quote
+ * character. Parsing matches literal text case-sensitively.
  */
 UCLASS()
 class DIRECTIVEUTILITIESRUNTIME_API UDirectiveUtilDateTimeFunctionLibrary : public UBlueprintFunctionLibrary
@@ -42,7 +44,7 @@ public:
 	 * @param OutText Receives the formatted text, or an empty string on failure.
 	 * @return `true` when the pattern was valid.
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Directive Utilities|DateTime")
+	UFUNCTION(BlueprintPure, Category = "Directive Utilities|DateTime")
 	static bool FormatDateTime(const FDateTime& DateTime, const FString& Pattern, FString& OutText);
 
 	/**
@@ -60,27 +62,33 @@ public:
 
 	/**
 	 * Converts a UTC timestamp to local wall-clock time using the timezone rules in effect at
-	 * that instant. Returns the input unchanged when the platform's time routines reject the
-	 * value, which covers dates outside the platform's supported range and offsets that would
-	 * push the result past the FDateTime range.
+	 * that instant.
 	 *
 	 * @param UtcDateTime The timestamp treated as UTC.
-	 * @return The equivalent local time.
+	 * @param OutLocalDateTime [out] The equivalent local time, or `UtcDateTime` on failure.
+	 * @return False when the platform's time routines reject the value or the result would fall
+	 *         outside the FDateTime range.
+	 * @note On Windows, dates before the year 1601 are outside the system time range and fail.
+	 *       On macOS and Linux, those dates convert with the platform's historical zone rules,
+	 *       which often use local mean time.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Directive Utilities|DateTime")
-	static FDateTime ToLocalTime(const FDateTime& UtcDateTime);
+	static bool ToLocalTime(const FDateTime& UtcDateTime, FDateTime& OutLocalDateTime);
 
 	/**
 	 * Converts local wall-clock time to a UTC timestamp using the timezone rules in effect at
 	 * that instant. Ambiguous or skipped local times around daylight-saving transitions resolve
-	 * per the platform's standard rules. Returns the input unchanged when the platform's time
-	 * routines reject the value.
+	 * per the platform's standard rules.
 	 *
 	 * @param LocalDateTime The timestamp treated as local time.
-	 * @return The equivalent UTC time.
+	 * @param OutUtcDateTime [out] The equivalent UTC time, or `LocalDateTime` on failure.
+	 * @return False when the platform's time routines reject the value or the result would fall
+	 *         outside the FDateTime range.
+	 * @note On Windows, dates before the year 1601 fail. On macOS and Linux, those dates convert
+	 *       with the platform's historical zone rules.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Directive Utilities|DateTime")
-	static FDateTime ToUtcTime(const FDateTime& LocalDateTime);
+	static bool ToUtcTime(const FDateTime& LocalDateTime, FDateTime& OutUtcDateTime);
 
 	/**
 	 * Formats a time span as clock-like text. The output is `hh:mm:ss`, prefixed with days as
