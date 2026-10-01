@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-10-01
+
 ### Added
 - Added cancellable async text and binary file reads and writes, with atomic writes enabled by default. Async file nodes also report Completed or Failed in worlds without a game instance, such as editor utility contexts, and fire Failed when the world context is missing.
 - Added runtime file watching for created, modified, and deleted changes in packaged desktop games. Watching polls on the core ticker, so it keeps running while the game is paused, and catches same-size rewrites within one second by hashing files up to 1 MiB.

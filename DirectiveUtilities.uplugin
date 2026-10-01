@@ -1,7 +1,7 @@
 {
 	"FileVersion": 3,
-	"Version": 7,
-	"VersionName": "2.2.0",
+	"Version": 8,
+	"VersionName": "2.3.0",
 	"FriendlyName": "Directive Utilities",
 	"Description": "An open-source Unreal Engine plugin that provides runtime and editor utility nodes for developers.",
 	"Category": "Unreal Directive",
