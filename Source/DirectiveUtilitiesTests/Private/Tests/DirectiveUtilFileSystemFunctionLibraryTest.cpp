@@ -3,13 +3,15 @@
 #include "Libraries/DirectiveUtilFileSystemFunctionLibrary.h"
 #include "Containers/StringConv.h"
 #include "HAL/FileManager.h"
+#include "HAL/PlatformFileManager.h"
 #include "HAL/PlatformProcess.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Guid.h"
 #include "Misc/Paths.h"
 
-#if PLATFORM_MAC && WITH_EDITOR
+#if PLATFORM_MAC || PLATFORM_LINUX
+#include <sys/stat.h>
 #include <unistd.h>
 #endif
 
@@ -251,6 +253,31 @@ bool FDirectiveUtilFileSystemFunctionLibraryTest::RunTest(const FString& Paramet
 	TestTrue(TEXT("UTF-16 appended text reads"),
 		UDirectiveUtilFileSystemFunctionLibrary::ReadTextFile(UnicodeAppendPath, Appended));
 	TestEqual(TEXT("UTF-16 appended text is exact"), Appended, FString(TEXT("wide text")));
+
+#if PLATFORM_MAC || PLATFORM_LINUX
+	if (geteuid() != 0)
+	{
+		const FString WriteOnlyPath = TestRoot / TEXT("WriteOnlyUtf16.txt");
+		const TArray<uint8> WriteOnlyBytes = { 0xFF, 0xFE, 'h', 0x00 };
+		TestTrue(TEXT("A write-only UTF-16 fixture is created"),
+			UDirectiveUtilFileSystemFunctionLibrary::WriteBinaryFile(WriteOnlyPath, WriteOnlyBytes));
+		const FString PhysicalWritePath = FPlatformFileManager::Get().GetPlatformFile()
+			.ConvertToAbsolutePathForExternalAppForWrite(*WriteOnlyPath);
+		const FTCHARToUTF8 PhysicalPath(*PhysicalWritePath);
+		const bool bPermissionsChanged = chmod(PhysicalPath.Get(), S_IWUSR) == 0;
+		TestTrue(TEXT("The UTF-16 fixture is made write-only"), bPermissionsChanged);
+		if (bPermissionsChanged)
+		{
+			const bool bAppended = UDirectiveUtilFileSystemFunctionLibrary::AppendTextFile(WriteOnlyPath, TEXT("!"));
+			TestTrue(TEXT("The fixture permissions are restored"), chmod(PhysicalPath.Get(), S_IRUSR | S_IWUSR) == 0);
+			TestFalse(TEXT("Append refuses an unreadable existing file"), bAppended);
+			TArray<uint8> PreservedBytes;
+			TestTrue(TEXT("The refused UTF-16 fixture reads after permissions are restored"),
+				UDirectiveUtilFileSystemFunctionLibrary::ReadBinaryFile(WriteOnlyPath, PreservedBytes));
+			TestEqual(TEXT("The unreadable UTF-16 file remains unchanged"), PreservedBytes, WriteOnlyBytes);
+		}
+	}
+#endif
 
 	const TArray<uint8> Latin1Bytes = { 'c', 'a', 'f', 0xE9 };
 	const FString Latin1AppendPath = TestRoot / TEXT("Latin1Append.txt");

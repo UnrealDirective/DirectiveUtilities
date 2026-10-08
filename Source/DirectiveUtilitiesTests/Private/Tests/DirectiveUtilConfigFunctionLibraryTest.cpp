@@ -103,6 +103,39 @@ bool FDirectiveUtilConfigFunctionLibraryTest::RunTest(const FString& Parameters)
 		UDirectiveUtilConfigFunctionLibrary::ReadConfigColor(FilePath, TEXT("Spatial"), TEXT("Accent"), FColor::Black), AccentColor);
 	TestEqual(TEXT("A malformed Vector uses its default"),
 		UDirectiveUtilConfigFunctionLibrary::ReadConfigVector(FilePath, TEXT("Audio"), TEXT("Device"), SpawnLocation), SpawnLocation);
+	for (const FString& InvalidNumber : { FString(TEXT("oops")), FString(TEXT("1.2.3")), FString(TEXT("1e")),
+		FString(TEXT("+")), FString(TEXT(".")), FString(TEXT("nan")), FString(TEXT("1e999")) })
+	{
+		const FString VectorText = TEXT("X=") + InvalidNumber + TEXT(" Y=2 Z=3");
+		TestTrue(TEXT("A malformed numeric Vector value is stored"),
+			UDirectiveUtilConfigFunctionLibrary::WriteConfigString(FilePath, TEXT("Spatial"), TEXT("InvalidVector"), VectorText));
+		TestEqual(TEXT("A malformed numeric Vector returns its default"),
+			UDirectiveUtilConfigFunctionLibrary::ReadConfigVector(FilePath, TEXT("Spatial"), TEXT("InvalidVector"), SpawnLocation), SpawnLocation);
+		TestEqual(TEXT("A malformed numeric Vector2D returns its default"),
+			UDirectiveUtilConfigFunctionLibrary::ReadConfigVector2D(FilePath, TEXT("Spatial"), TEXT("InvalidVector"), UiScale), UiScale);
+		TestTrue(TEXT("A malformed numeric Rotator value is stored"),
+			UDirectiveUtilConfigFunctionLibrary::WriteConfigString(FilePath, TEXT("Spatial"), TEXT("InvalidRotator"),
+				TEXT("P=") + InvalidNumber + TEXT(" Y=2 R=3")));
+		TestEqual(TEXT("A malformed numeric Rotator returns its default"),
+			UDirectiveUtilConfigFunctionLibrary::ReadConfigRotator(FilePath, TEXT("Spatial"), TEXT("InvalidRotator"), SpawnRotation), SpawnRotation);
+	}
+	TestTrue(TEXT("A Vector in exponent and parenthesized form is stored"),
+		UDirectiveUtilConfigFunctionLibrary::WriteConfigString(FilePath, TEXT("Spatial"), TEXT("NumericVector"),
+			TEXT("(X=1e2,Y=-2.5e1,Z=8.)")));
+	TestEqual(TEXT("Valid exponent and parenthesized components still parse"),
+		UDirectiveUtilConfigFunctionLibrary::ReadConfigVector(FilePath, TEXT("Spatial"), TEXT("NumericVector"), FVector::ZeroVector), SpawnLocation);
+	for (const FString& InvalidColor : { FString(TEXT("R=oops G=2 B=3")), FString(TEXT("R=1 G=2 B=3 A=oops")),
+		FString(TEXT("R=256 G=2 B=3")), FString(TEXT("R=-1 G=2 B=3")), FString(TEXT("R=1.5 G=2 B=3")) })
+	{
+		TestTrue(TEXT("A malformed Color value is stored"),
+			UDirectiveUtilConfigFunctionLibrary::WriteConfigString(FilePath, TEXT("Spatial"), TEXT("InvalidColor"), InvalidColor));
+		TestEqual(TEXT("A malformed Color returns its default"),
+			UDirectiveUtilConfigFunctionLibrary::ReadConfigColor(FilePath, TEXT("Spatial"), TEXT("InvalidColor"), AccentColor), AccentColor);
+	}
+	TestTrue(TEXT("A Color without alpha is stored"),
+		UDirectiveUtilConfigFunctionLibrary::WriteConfigString(FilePath, TEXT("Spatial"), TEXT("RgbColor"), TEXT("(R=12,G=34,B=56)")));
+	TestEqual(TEXT("A missing alpha remains fully opaque"),
+		UDirectiveUtilConfigFunctionLibrary::ReadConfigColor(FilePath, TEXT("Spatial"), TEXT("RgbColor"), FColor::Black), FColor(12, 34, 56, 255));
 
 	TestTrue(TEXT("Writing an array succeeds"),
 		UDirectiveUtilConfigFunctionLibrary::WriteConfigStringArray(FilePath, TEXT("Mods"), TEXT("LoadOrder"), { TEXT("a"), TEXT("b") }));

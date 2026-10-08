@@ -171,7 +171,11 @@ namespace
 	{
 		OutEncoding = EAppendedTextEncoding::Utf8;
 		const TUniquePtr<FArchive> Reader(IFileManager::Get().CreateFileReader(*ResolvedPath, FILEREAD_Silent));
-		if (!Reader || Reader->TotalSize() < 2)
+		if (!Reader)
+		{
+			return !IFileManager::Get().FileExists(*ResolvedPath);
+		}
+		if (Reader->TotalSize() < 2)
 		{
 			return true;
 		}

@@ -63,7 +63,7 @@ Limits:
 static bool AppendTextFile(const FString& Path, const FString& Contents, const bool bCreateDirectories = true);
 ```
 
-Appends to the end of the file without inserting a separator and without rewriting the existing bytes. A missing file is created with UTF-8 text and no byte-order mark. When the file starts with a UTF-16 byte-order mark, the text is appended as UTF-16 in the same byte order. Every other file receives UTF-8 text, so a Latin-1 file keeps its original bytes followed by UTF-8 bytes. A file that starts with a UTF-32 byte-order mark, or a UTF-16 file with an odd byte count, fails without changing the file. The append is not atomic. A failure part way through can leave part of the text in the file.
+Appends to the end of the file without inserting a separator and without rewriting the existing bytes. A missing file is created with UTF-8 text and no byte-order mark. When the file starts with a UTF-16 byte-order mark, the text is appended as UTF-16 in the same byte order. Every other file receives UTF-8 text, so a Latin-1 file keeps its original bytes followed by UTF-8 bytes. An unreadable existing file, a file that starts with a UTF-32 byte-order mark, or a UTF-16 file with an odd byte count fails without changing the file. The append is not atomic. A failure part way through can leave part of the text in the file.
 
 ## Read Binary File
 

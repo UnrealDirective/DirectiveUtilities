@@ -335,6 +335,75 @@ namespace
 		return true;
 	}
 
+	bool ReadNumericComponent(const FString& Text, const TCHAR* Component, double& OutValue, const bool bOptional = false)
+	{
+		FString Token;
+		if (!FParse::Value(*Text, Component, Token))
+		{
+			return bOptional;
+		}
+		const TCHAR* Cursor = *Token;
+		if (*Cursor == TEXT('-') || *Cursor == TEXT('+'))
+		{
+			++Cursor;
+		}
+		auto ConsumeDigits = [&Cursor]()
+		{
+			int32 Count = 0;
+			while (*Cursor >= TEXT('0') && *Cursor <= TEXT('9'))
+			{
+				++Cursor;
+				++Count;
+			}
+			return Count;
+		};
+		int32 Digits = ConsumeDigits();
+		if (*Cursor == TEXT('.'))
+		{
+			++Cursor;
+			Digits += ConsumeDigits();
+		}
+		if (Digits == 0)
+		{
+			return false;
+		}
+		if (*Cursor == TEXT('e') || *Cursor == TEXT('E'))
+		{
+			++Cursor;
+			if (*Cursor == TEXT('-') || *Cursor == TEXT('+'))
+			{
+				++Cursor;
+			}
+			if (ConsumeDigits() == 0)
+			{
+				return false;
+			}
+		}
+		if (*Cursor != TEXT('\0'))
+		{
+			return false;
+		}
+		const double Value = FCString::Atod(*Token);
+		if (!FMath::IsFinite(Value))
+		{
+			return false;
+		}
+		OutValue = Value;
+		return true;
+	}
+
+	bool ReadColorComponent(const FString& Text, const TCHAR* Component, uint8& OutValue, const bool bOptional = false)
+	{
+		double Value = OutValue;
+		if (!ReadNumericComponent(Text, Component, Value, bOptional)
+			|| Value < 0.0 || Value > MAX_uint8 || Value != FMath::FloorToDouble(Value))
+		{
+			return false;
+		}
+		OutValue = static_cast<uint8>(Value);
+		return true;
+	}
+
 	void SetScalarConfigValue(FConfigFile& File, const FString& SectionName, const FString& KeyName, const FString& Value)
 	{
 		File.RemoveKeyFromSection(*SectionName, FName(*KeyName));
@@ -557,7 +626,8 @@ FVector2D UDirectiveUtilConfigFunctionLibrary::ReadConfigVector2D(const FString&
 {
 	const FString Stored = ReadConfigString(FilePath, SectionName, KeyName, FString());
 	FVector2D Value;
-	return !Stored.IsEmpty() && Value.InitFromString(Stored) ? Value : DefaultValue;
+	return ReadNumericComponent(Stored, TEXT("X="), Value.X)
+		&& ReadNumericComponent(Stored, TEXT("Y="), Value.Y) ? Value : DefaultValue;
 }
 
 FVector UDirectiveUtilConfigFunctionLibrary::ReadConfigVector(const FString& FilePath,
@@ -565,7 +635,9 @@ FVector UDirectiveUtilConfigFunctionLibrary::ReadConfigVector(const FString& Fil
 {
 	const FString Stored = ReadConfigString(FilePath, SectionName, KeyName, FString());
 	FVector Value;
-	return !Stored.IsEmpty() && Value.InitFromString(Stored) ? Value : DefaultValue;
+	return ReadNumericComponent(Stored, TEXT("X="), Value.X)
+		&& ReadNumericComponent(Stored, TEXT("Y="), Value.Y)
+		&& ReadNumericComponent(Stored, TEXT("Z="), Value.Z) ? Value : DefaultValue;
 }
 
 FRotator UDirectiveUtilConfigFunctionLibrary::ReadConfigRotator(const FString& FilePath,
@@ -573,15 +645,20 @@ FRotator UDirectiveUtilConfigFunctionLibrary::ReadConfigRotator(const FString& F
 {
 	const FString Stored = ReadConfigString(FilePath, SectionName, KeyName, FString());
 	FRotator Value;
-	return !Stored.IsEmpty() && Value.InitFromString(Stored) ? Value : DefaultValue;
+	return ReadNumericComponent(Stored, TEXT("P="), Value.Pitch)
+		&& ReadNumericComponent(Stored, TEXT("Y="), Value.Yaw)
+		&& ReadNumericComponent(Stored, TEXT("R="), Value.Roll) ? Value : DefaultValue;
 }
 
 FColor UDirectiveUtilConfigFunctionLibrary::ReadConfigColor(const FString& FilePath,
 	const FString& SectionName, const FString& KeyName, const FColor& DefaultValue)
 {
 	const FString Stored = ReadConfigString(FilePath, SectionName, KeyName, FString());
-	FColor Value;
-	return !Stored.IsEmpty() && Value.InitFromString(Stored) ? Value : DefaultValue;
+	FColor Value(0, 0, 0, MAX_uint8);
+	return ReadColorComponent(Stored, TEXT("R="), Value.R)
+		&& ReadColorComponent(Stored, TEXT("G="), Value.G)
+		&& ReadColorComponent(Stored, TEXT("B="), Value.B)
+		&& ReadColorComponent(Stored, TEXT("A="), Value.A, true) ? Value : DefaultValue;
 }
 
 bool UDirectiveUtilConfigFunctionLibrary::WriteConfigVector2D(const FString& FilePath,

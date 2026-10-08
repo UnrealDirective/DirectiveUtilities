@@ -75,7 +75,7 @@ static bool WriteConfigRotator(const FString& FilePath, const FString& SectionNa
 static bool WriteConfigColor(const FString& FilePath, const FString& SectionName, const FString& KeyName, const FColor& Value);
 ```
 
-Matching write nodes store Unreal's standard text representation. Non-finite vectors and rotators are rejected. Reads return the supplied default when the key is missing or malformed.
+Matching write nodes store Unreal's standard text representation. Non-finite vectors and rotators are rejected. Reads return the supplied default when a required component is missing or a component is not a finite number. Color components must be whole numbers from 0 to 255. A missing alpha defaults to 255; an invalid alpha returns the supplied default.
 
 ## Has Config Key
 
