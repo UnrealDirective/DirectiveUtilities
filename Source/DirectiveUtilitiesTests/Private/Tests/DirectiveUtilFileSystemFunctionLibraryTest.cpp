@@ -47,7 +47,7 @@ namespace
 	public:
 		explicit FTemporaryFatVolume(FAutomationTestBase& InTest)
 			: Test(InTest)
-			, Root(FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir()) / TEXT("DirectiveUtilTests")
+			, Root(FPaths::ConvertRelativePathToFull(FPlatformProcess::UserTempDir()) / TEXT("DirectiveUtilTests")
 				/ (TEXT("FatVolume-") + FGuid::NewGuid().ToString(EGuidFormats::Digits)))
 			, ImagePath(Root / TEXT("Volume.dmg"))
 			, MountPath(Root / TEXT("Mount"))
@@ -268,6 +268,11 @@ bool FDirectiveUtilFileSystemFunctionLibraryTest::RunTest(const FString& Paramet
 		TestTrue(TEXT("The UTF-16 fixture is made write-only"), bPermissionsChanged);
 		if (bPermissionsChanged)
 		{
+#if PLATFORM_LINUX
+			AddExpectedMessagePlain(
+				FString::Printf(TEXT("open('%s', O_RDONLY | O_CLOEXEC) failed: errno=13 (Permission denied)"), *PhysicalWritePath),
+				ELogVerbosity::Warning, EAutomationExpectedMessageFlags::Contains, 1);
+#endif
 			const bool bAppended = UDirectiveUtilFileSystemFunctionLibrary::AppendTextFile(WriteOnlyPath, TEXT("!"));
 			TestTrue(TEXT("The fixture permissions are restored"), chmod(PhysicalPath.Get(), S_IRUSR | S_IWUSR) == 0);
 			TestFalse(TEXT("Append refuses an unreadable existing file"), bAppended);
