@@ -17,7 +17,12 @@ Version 2.0 replaces UDCore 1.x. Existing Blueprint assets migrate through bundl
 | Gameplay Tags | Hierarchy navigation, ancestry checks, sibling queries, and registry search. |
 | Save games | Slot enumeration, timestamps, byte serialization, validation, deletion, and renaming. |
 | Enhanced Input | Subsystem access and mapping-context operations. |
-| Async work | Timed flow, asset and class loading, traces, and navigation movement. |
+| File I/O | Text and binary reads and writes, append, atomic replacement, sizes, and timestamps. Unreal's existing nodes cover copy, move, delete, and directory operations. |
+| CSV and DataTables | RFC-style quoted-field parsing and writing, keyed edits and diffs, schema checks, runtime UDataTable import, safe replacement, export, and row diffs. |
+| Config files | .ini reads and writes for scalar, vector, rotation, color, and string-array values, plus key and section management. |
+| Date and time | Custom pattern formatting and parsing, UTC/local conversion, and duration formatting. |
+| Binary data | Zlib and gzip compression, SHA-256 hashing, and HMAC-SHA256 signing. |
+| Async work | Timed flow, asset and class loading, traces, navigation movement, file reads and writes, and file watching. |
 | Runtime context and profiling | Typed world, build configuration, build target queries, and keyed stopwatches. |
 | Editor actors | Actor filters, selection tools, viewport controls, layout operations, surface snapping, material operations, and mesh queries. |
 | Editor assets | Asset Registry queries, read-only content audits, and asset management helpers for editor scripts. |
@@ -108,6 +113,8 @@ Editor modules and editor-only targets can depend on `DirectiveUtilitiesEditor`.
 - [Changelog](CHANGELOG.md) tracks releases and behavior changes.
 
 ## Contributing
+
+Follow the [coding standards](Documentation/Coding-Standards.md) for source, tests, and documentation.
 
 When behavior changes, update its implementation and tests together. Revise the matching page under `Documentation/Nodes/` in the same pull request, then build the plugin for each affected engine version.
 

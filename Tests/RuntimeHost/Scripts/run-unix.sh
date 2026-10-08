@@ -22,8 +22,8 @@ RUNTIME_TEST_SOURCE_ROOT="$REPOSITORY_ROOT/Source/DirectiveUtilitiesTests"
 ARCHIVE_ROOT="$WORK_ROOT/Archive"
 REPORT_ROOT="$WORK_ROOT/Reports"
 PERFORMANCE_ROOT="$WORK_ROOT/Performance"
-EXPECTED_EDITOR_TEST_COUNT=54
-EXPECTED_PACKAGED_TEST_COUNT=35
+EXPECTED_EDITOR_TEST_COUNT=61
+EXPECTED_PACKAGED_TEST_COUNT=42
 
 run_with_timeout() {
 	python3 - "$TEST_TIMEOUT_SECONDS" "$@" <<'PY'
@@ -134,13 +134,15 @@ while IFS= read -r TEST_SOURCE; do
 	fi
 done < "$REPOSITORY_ROOT/Tests/RuntimeHost/RuntimeTestSources.txt"
 cp "$RUNTIME_TEST_SOURCE_ROOT/Public/Tests/DirectiveUtilTestObject.h" "$RUNTIME_TEST_MODULE/Public/Tests/DirectiveUtilTestObject.h"
+cp "$RUNTIME_TEST_SOURCE_ROOT/Public/Tests/DirectiveUtilTestDataTableRows.h" "$RUNTIME_TEST_MODULE/Public/Tests/DirectiveUtilTestDataTableRows.h"
 
 "$BUILD_SCRIPT" DirectiveUtilitiesRuntimeHostEditor "$PLATFORM" Development \
 	-Project="$PROJECT_FILE" \
 	-WaitMutex \
 	-NoHotReload \
 	-ForceUnity \
-	-DisableAdaptiveUnity
+	-DisableAdaptiveUnity \
+	-NoUBA
 
 run_with_timeout "$EDITOR_COMMAND" "$PROJECT_FILE" \
 	-ExecCmds="Automation RunTests DirectiveUtilities; Quit" \
@@ -169,6 +171,7 @@ run_with_timeout "$EDITOR_COMMAND" "$PROJECT_FILE" \
 	-package \
 	-archive \
 	-archivedirectory="$ARCHIVE_ROOT" \
+	-ubtargs=-NoUBA \
 	-unattended \
 	-utf8output
 

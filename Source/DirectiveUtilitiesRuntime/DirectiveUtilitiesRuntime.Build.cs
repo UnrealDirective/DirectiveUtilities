@@ -33,6 +33,8 @@ public class DirectiveUtilitiesRuntime : ModuleRules
 			}
 		);
 
+		AddEngineThirdPartyPrivateStaticDependencies(Target, "zlib");
+
 
 		DynamicallyLoadedModuleNames.AddRange(
 			new string[]

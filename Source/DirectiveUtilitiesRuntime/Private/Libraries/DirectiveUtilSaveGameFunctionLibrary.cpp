@@ -2,15 +2,13 @@
 
 
 #include "Libraries/DirectiveUtilSaveGameFunctionLibrary.h"
+#include "DirectiveUtilRuntimeHelpers.h"
 #include "Libraries/DirectiveUtilStringFunctionLibrary.h"
 #include "Kismet/GameplayStatics.h"
-#include "GameFramework/SaveGame.h"
 #include "HAL/FileManager.h"
 #include "Misc/Paths.h"
 #include "PlatformFeatures.h"
 #include "SaveGameSystem.h"
-
-#include <ctime>
 
 namespace
 {
@@ -33,34 +31,6 @@ namespace
 	{
 		return IPlatformFeaturesModule::Get().GetSaveGameSystem();
 	}
-
-	FDateTime ConvertUtcFileTimeToLocal(const FDateTime& UtcTimestamp)
-	{
-		const int64 UnixSeconds = UtcTimestamp.ToUnixTimestamp();
-		const int32 Milliseconds = UtcTimestamp.GetMillisecond();
-		const time_t Time = static_cast<time_t>(UnixSeconds);
-		tm LocalTm;
-#if PLATFORM_WINDOWS
-		if (localtime_s(&LocalTm, &Time) != 0)
-		{
-			return UtcTimestamp;
-		}
-#else
-		if (localtime_r(&Time, &LocalTm) == nullptr)
-		{
-			return UtcTimestamp;
-		}
-#endif
-		return FDateTime(
-			LocalTm.tm_year + 1900,
-			LocalTm.tm_mon + 1,
-			LocalTm.tm_mday,
-			LocalTm.tm_hour,
-			LocalTm.tm_min,
-			LocalTm.tm_sec,
-			Milliseconds);
-	}
-
 }
 
 TArray<FString> UDirectiveUtilSaveGameFunctionLibrary::GetAllSaveSlotNames()
@@ -107,7 +77,7 @@ bool UDirectiveUtilSaveGameFunctionLibrary::GetSaveSlotTimestamp(const FString& 
 		return false;
 	}
 
-	OutTimestamp = ConvertUtcFileTimeToLocal(Timestamp);
+	OutTimestamp = DirectiveUtil::UtcToLocal(Timestamp);
 	return true;
 }
 

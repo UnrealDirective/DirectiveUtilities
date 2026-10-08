@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2026 Unreal Directive. Licensed under the MIT License.
+// Copyright (c) 2026 Unreal Directive. Licensed under the MIT License.
 
 #pragma once
 
@@ -63,6 +63,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Directive Utilities|Navigation")
 	void EndTask();
 	virtual void Activate() override;
+	virtual void SetReadyToDestroy() override;
 
 	// The delegate called when the movement has completed regardless of success. Fires exactly once.
 	UPROPERTY(BlueprintAssignable)
@@ -93,6 +94,8 @@ protected:
 	void CheckMoveToLocation();
 
 	void CheckStuckMovement();
+
+	void ClearTimers();
 
 	virtual void ExecuteCompleted(bool bSuccess);
 };
@@ -148,6 +151,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Directive Utilities|Navigation")
 	void EndTask();
 	virtual void Activate() override;
+	virtual void SetReadyToDestroy() override;
 
 	// The delegate called when the movement has completed regardless of success. Fires exactly once.
 	UPROPERTY(BlueprintAssignable)
@@ -180,6 +184,8 @@ protected:
 	void CheckMoveToActor();
 
 	void CheckStuckMovement();
+
+	void ClearTimers();
 
 	virtual void ExecuteCompleted(bool bSuccess);
 };

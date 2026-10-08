@@ -88,6 +88,11 @@ UDirectiveUtilTask_AsyncTrace* UDirectiveUtilTask_AsyncTrace::AsyncCapsuleTraceB
 
 void UDirectiveUtilTask_AsyncTrace::Activate()
 {
+	if (IsReadyToDestroy())
+	{
+		return;
+	}
+
 	UWorld* World = WorldContextObject && GEngine
 		? GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull)
 		: nullptr;
@@ -99,6 +104,7 @@ void UDirectiveUtilTask_AsyncTrace::Activate()
 		return;
 	}
 
+	RootWithoutGameInstance();
 	const ECollisionChannel CollisionChannel = UEngineTypes::ConvertToCollisionChannel(TraceChannel);
 	const EAsyncTraceType AsyncType = bMultiTrace ? EAsyncTraceType::Multi : EAsyncTraceType::Single;
 
@@ -134,6 +140,11 @@ void UDirectiveUtilTask_AsyncTrace::Activate()
 
 void UDirectiveUtilTask_AsyncTrace::OnTraceComplete(const FTraceHandle& Handle, FTraceDatum& Datum)
 {
+	if (IsReadyToDestroy())
+	{
+		return;
+	}
+
 	Completed.Broadcast(Datum.OutHits);
 	SetReadyToDestroy();
 }

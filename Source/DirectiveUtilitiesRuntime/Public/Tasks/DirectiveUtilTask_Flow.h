@@ -7,6 +7,9 @@
 #include "Engine/TimerHandle.h"
 #include "DirectiveUtilTask_Flow.generated.h"
 
+class FTimerManager;
+class UWorld;
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnDurationUpdated, float, ElapsedTime, float, DeltaTime, float, Alpha);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnDurationCompleted);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnRepeatIteration, int32, Index, int32, Remaining);
@@ -54,7 +57,9 @@ private:
 	bool bFinished = false;
 	FTimerHandle UpdateTimerHandle;
 	FTimerHandle CompletionTimerHandle;
+	TWeakObjectPtr<UWorld> TimerWorld;
 
+	FTimerManager* GetWorldTimerManager() const;
 	void OnUpdate();
 	void OnComplete();
 	void BroadcastUpdate(float ElapsedTime, float Alpha);
@@ -113,7 +118,9 @@ private:
 	float InitialDelay = 0.0f;
 	bool bFinished = false;
 	FTimerHandle TimerHandle;
+	TWeakObjectPtr<UWorld> TimerWorld;
 
+	FTimerManager* GetWorldTimerManager() const;
 	void Schedule(float Delay);
 	void OnIteration();
 	void Complete();

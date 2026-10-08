@@ -25,6 +25,11 @@ UDirectiveUtilTask_UpdateForDuration* UDirectiveUtilTask_UpdateForDuration::Upda
 
 void UDirectiveUtilTask_UpdateForDuration::Activate()
 {
+	if (bFinished)
+	{
+		return;
+	}
+
 	UWorld* World = WorldContextObject && GEngine
 		? GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull)
 		: nullptr;
@@ -36,6 +41,8 @@ void UDirectiveUtilTask_UpdateForDuration::Activate()
 		return;
 	}
 
+	TimerWorld = World;
+	RootWithoutGameInstance();
 	FTimerManager& TimerManager = World->GetTimerManager();
 	if (!FMath::IsFinite(Duration) || Duration <= 0.0f)
 	{
@@ -95,7 +102,7 @@ void UDirectiveUtilTask_UpdateForDuration::OnUpdate()
 		return;
 	}
 
-	FTimerManager* TimerManager = GetTimerManager();
+	FTimerManager* TimerManager = GetWorldTimerManager();
 	if (!TimerManager)
 	{
 		Cancel();
@@ -145,9 +152,15 @@ void UDirectiveUtilTask_UpdateForDuration::BroadcastUpdate(const float ElapsedTi
 	Updated.Broadcast(ElapsedTime, DeltaTime, Alpha);
 }
 
+FTimerManager* UDirectiveUtilTask_UpdateForDuration::GetWorldTimerManager() const
+{
+	const UWorld* World = TimerWorld.Get();
+	return World ? &World->GetTimerManager() : nullptr;
+}
+
 void UDirectiveUtilTask_UpdateForDuration::ClearTimers()
 {
-	if (FTimerManager* TimerManager = GetTimerManager())
+	if (FTimerManager* TimerManager = GetWorldTimerManager())
 	{
 		TimerManager->ClearTimer(UpdateTimerHandle);
 		TimerManager->ClearTimer(CompletionTimerHandle);
@@ -174,6 +187,11 @@ UDirectiveUtilTask_RepeatWithInterval* UDirectiveUtilTask_RepeatWithInterval::Re
 
 void UDirectiveUtilTask_RepeatWithInterval::Activate()
 {
+	if (bFinished)
+	{
+		return;
+	}
+
 	UWorld* World = WorldContextObject && GEngine
 		? GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull)
 		: nullptr;
@@ -185,6 +203,8 @@ void UDirectiveUtilTask_RepeatWithInterval::Activate()
 		return;
 	}
 
+	TimerWorld = World;
+	RootWithoutGameInstance();
 	if (Count == 0 || Count < -1)
 	{
 		TimerHandle = World->GetTimerManager().SetTimerForNextTick(this, &UDirectiveUtilTask_RepeatWithInterval::Complete);
@@ -218,7 +238,7 @@ bool UDirectiveUtilTask_RepeatWithInterval::ShouldBroadcastDelegates() const
 
 void UDirectiveUtilTask_RepeatWithInterval::Schedule(const float Delay)
 {
-	FTimerManager* TimerManager = GetTimerManager();
+	FTimerManager* TimerManager = GetWorldTimerManager();
 	if (!TimerManager)
 	{
 		Cancel();
@@ -277,9 +297,15 @@ void UDirectiveUtilTask_RepeatWithInterval::Complete()
 	SetReadyToDestroy();
 }
 
+FTimerManager* UDirectiveUtilTask_RepeatWithInterval::GetWorldTimerManager() const
+{
+	const UWorld* World = TimerWorld.Get();
+	return World ? &World->GetTimerManager() : nullptr;
+}
+
 void UDirectiveUtilTask_RepeatWithInterval::ClearTimer()
 {
-	if (FTimerManager* TimerManager = GetTimerManager())
+	if (FTimerManager* TimerManager = GetWorldTimerManager())
 	{
 		TimerManager->ClearTimer(TimerHandle);
 	}

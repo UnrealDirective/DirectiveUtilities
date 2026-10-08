@@ -8,6 +8,7 @@
 #include "GameFramework/SaveGame.h"
 #include "Engine/HitResult.h"
 #include "Tasks/DirectiveUtilTask_MoveToLocation.h"
+#include "Tasks/DirectiveUtilTask_FileSystem.h"
 #include "DirectiveUtilTestObject.generated.h"
 
 class UWorld;
@@ -222,6 +223,21 @@ public:
 	TArray<TObjectPtr<UObject>> LastObjects;
 
 	UPROPERTY()
+	FString LastString;
+
+	UPROPERTY()
+	FString LastError;
+
+	UPROPERTY()
+	TArray<uint8> LastBytes;
+
+	UPROPERTY()
+	TArray<EDirectiveUtilFileChangeType> FileChangeTypes;
+
+	UPROPERTY()
+	TArray<FString> FileChangePaths;
+
+	UPROPERTY()
 	TObjectPtr<UObject> Keepalive = nullptr;
 
 	UPROPERTY()
@@ -253,6 +269,30 @@ public:
 
 	UFUNCTION()
 	void OnBoolCompleted(bool bSuccess) { bCompleted = true; ++CompletedCount; bLastSuccess = bSuccess; }
+
+	UFUNCTION()
+	void OnTextFileCompleted(const FString& Contents, const FString& Error) { bCompleted = true; ++CompletedCount; LastString = Contents; LastError = Error; }
+
+	UFUNCTION()
+	void OnTextFileFailed(const FString& Contents, const FString& Error) { bFailed = true; LastString = Contents; LastError = Error; }
+
+	UFUNCTION()
+	void OnBinaryFileCompleted(const TArray<uint8>& Bytes, const FString& Error) { bCompleted = true; ++CompletedCount; LastBytes = Bytes; LastError = Error; }
+
+	UFUNCTION()
+	void OnBinaryFileFailed(const TArray<uint8>& Bytes, const FString& Error) { bFailed = true; LastBytes = Bytes; LastError = Error; }
+
+	UFUNCTION()
+	void OnFileWriteCompleted(const FString& Error) { bCompleted = true; ++CompletedCount; LastError = Error; }
+
+	UFUNCTION()
+	void OnFileWriteFailed(const FString& Error) { bFailed = true; LastError = Error; }
+
+	UFUNCTION()
+	void OnFileChanged(EDirectiveUtilFileChangeType ChangeType, const FString& Path) { FileChangeTypes.Add(ChangeType); FileChangePaths.Add(Path); }
+
+	UFUNCTION()
+	void OnFileWatchFailed(const FString& Error) { bFailed = true; LastError = Error; }
 
 	UFUNCTION()
 	void OnDurationUpdated(float ElapsedTime, float DeltaTime, float Alpha) { ++UpdatedCount; LastElapsedTime = ElapsedTime; LastDeltaTime = DeltaTime; LastAlpha = Alpha; UpdateElapsedTimes.Add(ElapsedTime); UpdateDeltaTimes.Add(DeltaTime); UpdateAlphas.Add(Alpha); }
